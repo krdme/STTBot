@@ -1,11 +1,15 @@
 # External
-from flask import Blueprint
+from flask import Blueprint, Response
+from slack.errors import SlackApiError
 from slackeventsapi import SlackEventAdapter
+import json
 
 # Internal
 from STTBot.models.command import Command
+from STTBot.models.permalink import Permalink
 from STTBot.slack_client import slack_client
 from STTBot.utils import env
+import STTBot.data_interface as data_interface
 
 
 bot_slack_events_route = env.get_cfg("BOT_SLACK_EVENTS_ROUTE")
@@ -13,49 +17,150 @@ bot_user = env.get_cfg("BOT_USER_ID")
 slack_signing_secret = env.get_cfg("SLACK_SIGNING_SECRET")
 bot_slack_events_blueprint = Blueprint("bot_slack_events", __name__)
 events_adapter = SlackEventAdapter(slack_signing_secret, bot_slack_events_route, bot_slack_events_blueprint)
+this_event_data = None
+
+
+@bot_slack_events_blueprint.app_errorhandler(500)
+def handle_error(err):
+    env.log.error(err)
+    channel = this_event_data["event"].get("channel")
+    slack_client.chat_postMessage(channel=channel, text=f":warning: {err}")
+    resp = Response({"status": 500})
+    resp.headers['X-Slack-No-Retry'] = 1
+    resp.status_code = 500
+    return resp
 
 
 @events_adapter.on("app_mention")
 def handle_mention(event_data):
-    env.log.info(event_data)
+    global this_event_data
+    this_event_data = event_data
     message = event_data["event"]
 
     if message.get("user") == bot_user or message.get("subtype") == "bot_message":
-        _handle_bot_mention(event_data)
+        return _handle_bot_mention(event_data)
     else:
-        _handle_user_mention(event_data)
+        return _handle_user_mention(event_data)
 
 
 def _handle_bot_mention(event_data):
     env.log.info("Ignoring message from the bot")
-    return
+    return {"status": 200}, 200
 
 
 def _handle_user_mention(event_data):
     text = event_data["event"].get("text")
+    channel = event_data["event"].get("channel")
     command = Command.from_text(text)
     cmd = command.cmd
     sub_cmd = command.get_sub_cmd()
+    env.log.info(f"Received command `{command.raw_cmd}` in {channel}")
 
-    if cmd == "fg":
-        if sub_cmd == "round":
-            _cmd_fg_round(event_data)
-        if sub_cmd == "dab":
-            _cmd_fg_dab(event_data)
+    matching_cmd = [command for command in commands if command['cmd'] == cmd and command['sub_cmd'] == sub_cmd]
 
-    return {"status": 200}
+    if len(matching_cmd) == 1:
+        matching_cmd[0]['func'](event_data, command)
+    else:
+        return _throw_error(f"Unknown command `{command.raw_cmd}`", channel)
+
+    env.log.info(f"Completed processing `{command.raw_cmd}` in {channel}")
+    return {"status": 200}, 200
 
 
-def _cmd_fg_round(event_data):
+def _cmd_help(event_data, command):
     channel = event_data["event"].get("channel")
-    message = "Did you make it through this round?"
-    resp = slack_client.chat_postMessage(channel=channel, text=message)
-    resp_ts = resp.get("ts")
-    slack_client.reactions_add(name="heavy_check_mark", channel=channel, timestamp=resp_ts)
-    slack_client.reactions_add(name="x", channel=channel, timestamp=resp_ts)
-
-
-def _cmd_fg_dab(event_data):
-    channel = event_data["event"].get("channel")
-    message = ":fgdab:"
+    cmds = "\n".join([f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}" for cmd in commands])
+    message = f"Here is everything I can do:\n{cmds}"
     slack_client.chat_postMessage(channel=channel, text=message)
+
+
+def _cmd_pin(event_data, command):
+    channel = event_data["event"].get("channel")
+    message = data_interface.get_random_pin()
+
+    if message is None:
+        return _throw_error("No pins found", channel)
+
+    permalink_msg = slack_client.chat_getPermalink(channel=message[0], message_ts=message[1])
+    slack_client.chat_postMessage(channel=channel, text=permalink_msg['permalink'])
+
+
+def _cmd_pin_add(event_data, command):
+    channel = event_data["event"].get("channel")
+    permalink = Permalink.from_text(command.args[0])
+
+    if permalink is None:
+        return _throw_error("Message does not seem like a valid permalink", channel)
+
+    try:
+        pin_msg_details = slack_client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
+    except SlackApiError:
+        return _throw_error("Could not find a message matching that pin", channel)
+
+    if len(pin_msg_details['messages']) == 0:
+        return _throw_error("Could not find a message matching that pin", channel)
+    elif data_interface.get_pin(permalink.channel, permalink.timestamp) is not None:
+        return _throw_error("Message is already pinned", channel)
+
+    message_json = json.dumps(pin_msg_details['messages'][0])
+    data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json)
+    slack_client.chat_postMessage(channel=channel, text=":white_check_mark: Successfully added pin")
+
+
+def _cmd_pin_remove(event_data, command):
+    channel = event_data["event"].get("channel")
+    permalink = Permalink.from_text(command.args[0])
+
+    if permalink is None:
+        return _throw_error("Message does not seem like a valid permalink", channel)
+
+    if data_interface.get_pin(permalink.channel, permalink.timestamp) is None:
+        return _throw_error("No matching pin found", channel)
+
+    data_interface.remove_pin(permalink.channel, permalink.timestamp)
+    slack_client.chat_postMessage(channel=channel, text=":white_check_mark: Successfully removed pin")
+
+
+def _throw_error(message, channel):
+    env.log.warning(message)
+    slack_client.chat_postMessage(channel=channel, text=f":warning: {message}")
+    resp = Response({"status": 400})
+    resp.headers['X-Slack-No-Retry'] = 1
+    resp.status_code = 400
+    return resp
+
+
+commands = [
+    {
+        "cmd": "help",
+        "sub_cmd": None,
+        "args": [],
+        "help": "Prints this message",
+        "func": _cmd_help
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": None,
+        "args": [],
+        "help": "Prints a random pin",
+        "func": _cmd_pin
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": "add",
+        "args": [
+            "message_permalink"
+        ],
+        "help": "Adds a message to the database",
+        "func": _cmd_pin_add
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": "remove",
+        "args": [
+            "message_permalink"
+        ],
+        "help": "Removes a message from the database",
+        "func": _cmd_pin_remove
+    }
+]

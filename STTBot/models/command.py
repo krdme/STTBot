@@ -5,7 +5,8 @@ default_sub_cmds = {"fg": "round"}
 
 
 class Command:
-    def __init__(self, cmd, sub_cmd, args, default_sub_cmd=None):
+    def __init__(self, raw_cmd, cmd, sub_cmd, args, default_sub_cmd=None):
+        self.raw_cmd = raw_cmd
         self.cmd = cmd
         self.sub_cmd = sub_cmd
         self.args = args
@@ -39,5 +40,5 @@ class Command:
         if cmd in default_sub_cmds.keys():
             default_sub_cmd = default_sub_cmds[cmd]
 
-        self = Command(cmd=cmd, sub_cmd=sub_cmd, args=args, default_sub_cmd=default_sub_cmd)
+        self = Command(raw_cmd=" ".join(words), cmd=cmd, sub_cmd=sub_cmd, args=args, default_sub_cmd=default_sub_cmd)
         return self
