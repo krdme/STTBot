@@ -59,19 +59,23 @@ def _handle_user_mention(event_data):
     matching_cmd = [command for command in commands if command['cmd'] == cmd and command['sub_cmd'] == sub_cmd]
 
     if len(matching_cmd) == 1:
-        matching_cmd[0]['func'](event_data, command)
+        status = matching_cmd[0]['func'](event_data, command)
     else:
         return _throw_error(f"Unknown command `{command.raw_cmd}`", channel)
 
-    env.log.info(f"Completed processing `{command.raw_cmd}` in {channel}")
-    return {"status": 200}, 200
+    if type(status) is Response:
+        return status
+    else:
+        slack_client.chat_postMessage(channel=channel, text=status['message'])
+        env.log.info(f"Completed processing `{command.raw_cmd}` in {channel}")
+        return {"status": 200}, 200
 
 
 def _cmd_help(event_data, command):
     channel = event_data["event"].get("channel")
     cmds = "\n".join([f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}" for cmd in commands])
     message = f"Here is everything I can do:\n{cmds}"
-    slack_client.chat_postMessage(channel=channel, text=message)
+    return {"message": message}
 
 
 def _cmd_pin(event_data, command):
@@ -82,7 +86,7 @@ def _cmd_pin(event_data, command):
         return _throw_error("No pins found", channel)
 
     permalink_msg = slack_client.chat_getPermalink(channel=message[0], message_ts=message[1])
-    slack_client.chat_postMessage(channel=channel, text=permalink_msg['permalink'])
+    return {"message": permalink_msg['permalink']}
 
 
 def _cmd_pin_add(event_data, command):
@@ -90,7 +94,7 @@ def _cmd_pin_add(event_data, command):
     permalink = Permalink.from_text(command.args[0])
 
     if permalink is None:
-        return _throw_error("Message does not seem like a valid permalink", channel)
+        return _throw_error(f"{command.args[0]} does not seem like a valid permalink", channel)
 
     try:
         pin_msg_details = slack_client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
@@ -104,7 +108,23 @@ def _cmd_pin_add(event_data, command):
 
     message_json = json.dumps(pin_msg_details['messages'][0])
     data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json)
-    slack_client.chat_postMessage(channel=channel, text=":white_check_mark: Successfully added pin")
+    return {"message": ":white_check_mark: Successfully added pin", "added": True}
+
+
+def _cmd_pin_load(event_data, command):
+    channel = event_data["event"].get("channel")
+    pins = slack_client.pins_list(channel=channel)
+    added_count = 0
+
+    for pin in pins['items']:
+        permalink = pin['message']['permalink']
+        command = Command(f"pin add {permalink}", "pin", "add", [permalink])
+        status = _cmd_pin_add(event_data, command)
+
+        if status['added']:
+            added_count += 1
+
+    return {"message":  f":white_check_mark: Successfully loaded {added_count} pins"}
 
 
 def _cmd_pin_remove(event_data, command):
@@ -118,7 +138,7 @@ def _cmd_pin_remove(event_data, command):
         return _throw_error("No matching pin found", channel)
 
     data_interface.remove_pin(permalink.channel, permalink.timestamp)
-    slack_client.chat_postMessage(channel=channel, text=":white_check_mark: Successfully removed pin")
+    return {"message": ":white_check_mark: Successfully removed pin"}
 
 
 def _throw_error(message, channel):
@@ -153,6 +173,13 @@ commands = [
         ],
         "help": "Adds a message to the database",
         "func": _cmd_pin_add
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": "load",
+        "args": [],
+        "help": "Adds all current pins in this channel to the database",
+        "func": _cmd_pin_load
     },
     {
         "cmd": "pin",

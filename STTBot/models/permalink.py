@@ -9,8 +9,8 @@ permalink_regex = re.compile(permalink_regex)
 
 
 class Permalink:
-    def __init__(self, permalink, server, channel, timestamp):
-        self.permalink = permalink
+    def __init__(self, raw_permalink, server, channel, timestamp):
+        self.raw_permalink = raw_permalink
         self.server = server
         self.channel = channel
         self.timestamp = timestamp
