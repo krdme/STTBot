@@ -1,6 +1,7 @@
 # Internal
 from STTBot.utils import startup
 
+
 args = vars(startup.parse_args())
 log = startup.setup_logging(debug=args["debug"])
 cfg = startup.load_config(args["env"])

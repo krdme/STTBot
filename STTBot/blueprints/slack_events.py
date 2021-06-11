@@ -5,26 +5,26 @@ from slackeventsapi import SlackEventAdapter
 import json
 
 # Internal
+from STTBot import slack_client
 from STTBot.models.command import Command
 from STTBot.models.permalink import Permalink
-from STTBot.slack_client import slack_client
 from STTBot.utils import env
 import STTBot.data_interface as data_interface
 
 
 bot_slack_events_route = env.get_cfg("BOT_SLACK_EVENTS_ROUTE")
-bot_user = env.get_cfg("BOT_USER_ID")
 slack_signing_secret = env.get_cfg("SLACK_SIGNING_SECRET")
 bot_slack_events_blueprint = Blueprint("bot_slack_events", __name__)
 events_adapter = SlackEventAdapter(slack_signing_secret, bot_slack_events_route, bot_slack_events_blueprint)
 this_event_data = None
+this_slack_client = None
 
 
 @bot_slack_events_blueprint.app_errorhandler(500)
 def handle_error(err):
     env.log.error(err)
     channel = this_event_data["event"].get("channel")
-    slack_client.chat_postMessage(channel=channel, text=f":warning: {err}")
+    this_slack_client.chat_postMessage(channel=channel, text=f":warning: Unexpected error, shout at Keith")
     resp = Response({"status": 500})
     resp.headers['X-Slack-No-Retry'] = 1
     resp.status_code = 500
@@ -33,18 +33,21 @@ def handle_error(err):
 
 @events_adapter.on("app_mention")
 def handle_mention(event_data):
-    global this_event_data
-    this_event_data = event_data
+    env.log.info(event_data)
+    global this_event_data, this_slack_client
     message = event_data["event"]
+    team_id = event_data["team_id"]
+    this_event_data = event_data
+    this_slack_client = slack_client.get_client(team_id)
 
-    if message.get("user") == bot_user or message.get("subtype") == "bot_message":
+    if message.get("subtype") == "bot_message":
         return _handle_bot_mention(event_data)
     else:
         return _handle_user_mention(event_data)
 
 
 def _handle_bot_mention(event_data):
-    env.log.info("Ignoring message from the bot")
+    env.log.info("Ignoring message from a bot")
     return {"status": 200}, 200
 
 
@@ -66,7 +69,7 @@ def _handle_user_mention(event_data):
     if type(status) is Response:
         return status
     else:
-        slack_client.chat_postMessage(channel=channel, text=status['message'])
+        this_slack_client.chat_postMessage(channel=channel, text=status['message'])
         env.log.info(f"Completed processing `{command.raw_cmd}` in {channel}")
         return {"status": 200}, 200
 
@@ -85,7 +88,7 @@ def _cmd_pin(event_data, command):
     if message is None:
         return _throw_error("No pins found", channel)
 
-    permalink_msg = slack_client.chat_getPermalink(channel=message[0], message_ts=message[1])
+    permalink_msg = this_slack_client.chat_getPermalink(channel=message[0], message_ts=message[1])
     return {"message": permalink_msg['permalink']}
 
 
@@ -97,9 +100,9 @@ def _cmd_pin_add(event_data, command):
         return _throw_error(f"{command.args[0]} does not seem like a valid permalink", channel)
 
     try:
-        pin_msg_details = slack_client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
-    except SlackApiError:
-        return _throw_error("Could not find a message matching that pin", channel)
+        pin_msg_details = this_slack_client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
+    except SlackApiError as e:
+        return _throw_error(f"Could not find a message matching that pin {e}", channel)
 
     if len(pin_msg_details['messages']) == 0:
         return _throw_error("Could not find a message matching that pin", channel)
@@ -113,7 +116,7 @@ def _cmd_pin_add(event_data, command):
 
 def _cmd_pin_load(event_data, command):
     channel = event_data["event"].get("channel")
-    pins = slack_client.pins_list(channel=channel)
+    pins = this_slack_client.pins_list(channel=channel)
     added_count = 0
 
     for pin in pins['items']:
@@ -121,6 +124,8 @@ def _cmd_pin_load(event_data, command):
         command = Command(f"pin add {permalink}", "pin", "add", [permalink])
         status = _cmd_pin_add(event_data, command)
 
+        if type(status) is Response:
+            return status
         if status['added']:
             added_count += 1
 
@@ -143,7 +148,7 @@ def _cmd_pin_remove(event_data, command):
 
 def _throw_error(message, channel):
     env.log.warning(message)
-    slack_client.chat_postMessage(channel=channel, text=f":warning: {message}")
+    this_slack_client.chat_postMessage(channel=channel, text=f":warning: {message}")
     resp = Response({"status": 400})
     resp.headers['X-Slack-No-Retry'] = 1
     resp.status_code = 400

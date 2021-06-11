@@ -1,8 +1,6 @@
-# Internal
-from STTBot.utils import env
-
 # External
 import re
+
 
 permalink_regex = "<?https:\\/\\/(.+).slack.com\\/archives\\/(.+?)\/p(\\d{16})>?"
 permalink_regex = re.compile(permalink_regex)

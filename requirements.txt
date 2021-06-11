@@ -1,6 +1,4 @@
 Flask~=1.1.2
 slackeventsapi~=2.2.1
 slackclient>=2.8.1
-slack~=0.0.2
-pyslack~=0.5.0
 gevent~=21.1.2

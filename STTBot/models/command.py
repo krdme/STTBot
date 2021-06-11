@@ -1,7 +1,9 @@
-# Internal
-from STTBot.utils import env
+# External
+import re
+
 
 default_sub_cmds = {"fg": "round"}
+user_at_pattern = re.compile("<@.+>")
 
 
 class Command:
@@ -23,7 +25,7 @@ class Command:
         cmd, sub_cmd, args, default_sub_cmd = None, None, [], None
 
         words = text.split()
-        if words[0] == f"<@{env.get_cfg('BOT_USER_ID')}>":
+        if user_at_pattern.match(words[0]):
             words = words[1:]
         else:
             raise ValueError("Bot must be mentioned at start of message")
