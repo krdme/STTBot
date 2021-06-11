@@ -71,11 +71,13 @@ def _handle_user_mention(event_data):
     else:
         this_slack_client.chat_postMessage(channel=channel, text=status['message'])
         env.log.info(f"Completed processing `{command.raw_cmd}` in {channel}")
-        return {"status": 200}, 200
+        resp = Response({"status": 200})
+        resp.headers['X-Slack-No-Retry'] = 1
+        resp.status_code = 200
+        return resp
 
 
 def _cmd_help(event_data, command):
-    channel = event_data["event"].get("channel")
     cmds = "\n".join([f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}" for cmd in commands])
     message = f"Here is everything I can do:\n{cmds}"
     return {"message": message}
@@ -118,6 +120,7 @@ def _cmd_pin_load(event_data, command):
     channel = event_data["event"].get("channel")
     pins = this_slack_client.pins_list(channel=channel)
     added_count = 0
+    failed_count = 0
 
     for pin in pins['items']:
         permalink = pin['message']['permalink']
@@ -125,11 +128,11 @@ def _cmd_pin_load(event_data, command):
         status = _cmd_pin_add(event_data, command)
 
         if type(status) is Response:
-            return status
+            failed_count += 1
         if status['added']:
             added_count += 1
 
-    return {"message":  f":white_check_mark: Successfully loaded {added_count} pins"}
+    return {"message":  f":white_check_mark: Successfully loaded {added_count} pins and ignored {failed_count} pins"}
 
 
 def _cmd_pin_remove(event_data, command):
