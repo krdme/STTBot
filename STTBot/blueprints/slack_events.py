@@ -125,7 +125,7 @@ def _cmd_pin_load(event_data, command):
         command = Command(f"pin add {permalink}", "pin", "add", [permalink])
         status = _cmd_pin_add(event_data, command)
 
-        if type(status) is Response:
+        if "error" in status.keys():
             failed_count += 1
         elif status['added']:
             added_count += 1
