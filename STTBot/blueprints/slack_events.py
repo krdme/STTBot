@@ -121,7 +121,7 @@ def _cmd_pin_load(event_data, command):
     failed_count = 0
 
     for pin in pins['items']:
-        permalink = pin['message']['permalink']
+        permalink = pin[pin['type']]['permalink']
         command = Command(f"pin add {permalink}", "pin", "add", [permalink])
         status = _cmd_pin_add(event_data, command)
 
