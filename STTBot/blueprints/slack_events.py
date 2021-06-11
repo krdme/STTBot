@@ -66,8 +66,8 @@ def _handle_user_mention(event_data):
     else:
         return _throw_error(f"Unknown command `{command.raw_cmd}`", channel)
 
-    if type(status) is Response:
-        return status
+    if "error" in status.keys():
+        return _throw_error(status["error"], channel)
     else:
         this_slack_client.chat_postMessage(channel=channel, text=status['message'])
         env.log.info(f"Completed processing `{command.raw_cmd}` in {channel}")
@@ -84,32 +84,30 @@ def _cmd_help(event_data, command):
 
 
 def _cmd_pin(event_data, command):
-    channel = event_data["event"].get("channel")
     message = data_interface.get_random_pin()
 
     if message is None:
-        return _throw_error("No pins found", channel)
+        return {"error": "No pins found"}
 
     permalink_msg = this_slack_client.chat_getPermalink(channel=message[0], message_ts=message[1])
     return {"message": permalink_msg['permalink']}
 
 
 def _cmd_pin_add(event_data, command):
-    channel = event_data["event"].get("channel")
     permalink = Permalink.from_text(command.args[0])
 
     if permalink is None:
-        return _throw_error(f"{command.args[0]} does not seem like a valid permalink", channel)
+        return {"error": f"{command.args[0]} does not seem like a valid permalink"}
 
     try:
         pin_msg_details = this_slack_client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
     except SlackApiError as e:
-        return _throw_error(f"Could not find a message matching that pin {e}", channel)
+        return {"error": f"Could not find a message matching that pin {e}"}
 
     if len(pin_msg_details['messages']) == 0:
-        return _throw_error("Could not find a message matching that pin", channel)
+        return {"error": "Could not find a message matching that pin"}
     elif data_interface.get_pin(permalink.channel, permalink.timestamp) is not None:
-        return _throw_error("Message is already pinned", channel)
+        return {"error": "Message is already pinned"}
 
     message_json = json.dumps(pin_msg_details['messages'][0])
     data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json)
@@ -129,21 +127,20 @@ def _cmd_pin_load(event_data, command):
 
         if type(status) is Response:
             failed_count += 1
-        if status['added']:
+        elif status['added']:
             added_count += 1
 
     return {"message":  f":white_check_mark: Successfully loaded {added_count} pins and ignored {failed_count} pins"}
 
 
 def _cmd_pin_remove(event_data, command):
-    channel = event_data["event"].get("channel")
     permalink = Permalink.from_text(command.args[0])
 
     if permalink is None:
-        return _throw_error("Message does not seem like a valid permalink", channel)
+        return {"error": "Message does not seem like a valid permalink"}
 
     if data_interface.get_pin(permalink.channel, permalink.timestamp) is None:
-        return _throw_error("No matching pin found", channel)
+        return {"error": "No matching pin found"}
 
     data_interface.remove_pin(permalink.channel, permalink.timestamp)
     return {"message": ":white_check_mark: Successfully removed pin"}
