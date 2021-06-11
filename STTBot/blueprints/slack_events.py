@@ -98,6 +98,8 @@ def _cmd_pin_add(event_data, command):
 
     if permalink is None:
         return {"error": f"{command.args[0]} does not seem like a valid permalink"}
+    elif data_interface.get_pin(permalink.channel, permalink.timestamp) is not None:
+        return {"error": "Message is already pinned"}
 
     try:
         pin_msg_details = this_slack_client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
@@ -106,8 +108,6 @@ def _cmd_pin_add(event_data, command):
 
     if len(pin_msg_details['messages']) == 0:
         return {"error": "Could not find a message matching that pin"}
-    elif data_interface.get_pin(permalink.channel, permalink.timestamp) is not None:
-        return {"error": "Message is already pinned"}
 
     message_json = json.dumps(pin_msg_details['messages'][0])
     data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json)
