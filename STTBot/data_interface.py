@@ -28,9 +28,12 @@ def get_pin(channel, timestamp):
         return row[0], row[1], json.loads(row[2])
 
 
-def get_random_pin():
+def get_random_pin(channel=None):
     cur = get_cur()
-    cur.execute(Query.GET_RANDOM_PIN)
+    if channel is not None:
+        cur.execute(Query.GET_RANDOM_PIN_FROM_CHANNEL, channel)
+    else:
+        cur.execute(Query.GET_RANDOM_PIN)
     row = cur.fetchone()
     cur.close()
 
@@ -74,5 +77,6 @@ class Query:
     GET_ALL_PINS = f"SELECT channel, timestamp, json FROM {Table.PINS} ORDER BY created_at"
     GET_PIN = f"SELECT channel, timestamp, json FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
     GET_RANDOM_PIN = f"SELECT channel, timestamp, json FROM {Table.PINS} ORDER BY RANDOM() LIMIT 1"
+    GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json FROM {Table.PINS} WHERE channel = ? ORDER BY RANDOM() LIMIT 1"
     INSERT_PIN = f"INSERT INTO {Table.PINS} (created_by, channel, timestamp, json) VALUES (?, ?, ?, ?)"
     REMOVE_PIN = f"DELETE FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"

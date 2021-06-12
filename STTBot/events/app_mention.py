@@ -42,7 +42,8 @@ def _cmd_help(client, event_data, command, say):
 
 
 def _cmd_pin(client, event_data, command, say):
-    message = data_interface.get_random_pin()
+    channel = event_data["event"].get("channel")
+    message = data_interface.get_random_pin(channel=channel)
 
     if message is None:
         raise CommandError("No pins found")
