@@ -52,7 +52,7 @@ def _cmd_pin(client, event_data, command, say):
     return {"message": permalink_msg['permalink']}
 
 
-def _cmd_pin_add(client, event_data, command, say):
+def _cmd_pin_add(client, event_data, command, say, ignore_missing=False):
     if len(command.args) == 0:
         raise CommandError(f"Need a permalink to pin")
 
@@ -63,15 +63,19 @@ def _cmd_pin_add(client, event_data, command, say):
     elif data_interface.get_pin(permalink.channel, permalink.timestamp) is not None:
         raise CommandError("Message is already pinned")
 
-    try:
-        pin_msg_details = client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
-    except SlackApiError as e:
-        raise CommandError(f"Could not find a message matching that pin")
+    if ignore_missing:
+        message_json = "{}"
+    else:
+        try:
+            pin_msg_details = client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
+        except SlackApiError as e:
+            raise CommandError(f"Could not find a message matching that pin")
 
-    if len(pin_msg_details['messages']) == 0:
-        raise CommandError("Could not find a message matching that pin")
+        if len(pin_msg_details['messages']) == 0:
+            raise CommandError("Could not find a message matching that pin")
 
-    message_json = json.dumps(pin_msg_details['messages'][0])
+        message_json = json.dumps(pin_msg_details['messages'][0])
+
     data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json)
     return {"message": ":white_check_mark: Successfully added pin", "added": True}
 
@@ -84,12 +88,14 @@ def _cmd_pin_load(client, event_data, command, say):
 
     for pin in pins['items']:
         permalink = pin[pin['type']]['permalink']
+        env.log.info(f"pin add {permalink}")
         command = Command(f"pin add {permalink}", "pin", "add", [permalink])
 
         try:
-            _cmd_pin_add(client, event_data, command, say)
+            _cmd_pin_add(client, event_data, command, say, ignore_missing=True)
             added_count += 1
         except CommandError as e:
+            env.log.error(e)
             failed_count += 1
 
     return {"message":  f":white_check_mark: Successfully loaded {added_count} pins and ignored {failed_count} pins"}
