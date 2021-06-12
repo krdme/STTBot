@@ -1,5 +1,6 @@
 # External
 import json
+import traceback
 
 # Internal
 from slack_sdk.errors import SlackApiError
@@ -71,10 +72,12 @@ def _cmd_pin_add(client, event_data, command, say, ignore_missing=False):
         if not ignore_missing:
             raise CommandError(f"Could not find a message matching that pin")
 
-    if pin_msg_details is not None and len(pin_msg_details['messages']) == 0 and not ignore_missing:
-        raise CommandError("Could not find a message matching that pin")
-    else:
-        message_json = json.dumps(pin_msg_details['messages'][0])
+    if pin_msg_details is not None:
+        if len(pin_msg_details['messages']) == 0:
+            if not ignore_missing:
+                raise CommandError("Could not find a message matching that pin")
+        else:
+            message_json = json.dumps(pin_msg_details['messages'][0])
 
     data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json)
     return {"message": ":white_check_mark: Successfully added pin", "added": True}
@@ -83,6 +86,7 @@ def _cmd_pin_add(client, event_data, command, say, ignore_missing=False):
 def _cmd_pin_load(client, event_data, command, say):
     channel = event_data["event"].get("channel")
     pins = client.pins_list(channel=channel)
+    env.log.info(pins)
     added_count = 0
     failed_count = 0
 
@@ -116,10 +120,11 @@ def _cmd_pin_remove(client, event_data, command, say):
     return {"message": ":white_check_mark: Successfully removed pin"}
 
 
-def _ret_error(message, say):
-    say(f":warning: {message}")
-    env.log.warning(message)
-    return {"error": message}, 400
+def _ret_error(error, say):
+    say(f":warning: {error}")
+    env.log.warning(error)
+    env.log.warning(traceback.print_exc())
+    return {"error": error}, 400
 
 
 def _ret_success(ret_message, suc_message, say):
