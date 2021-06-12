@@ -31,7 +31,8 @@ def get_pin(channel, timestamp):
 def get_random_pin(channel=None):
     cur = get_cur()
     if channel is not None:
-        cur.execute(Query.GET_RANDOM_PIN_FROM_CHANNEL, channel)
+        env.log.info(f"Getting pin from {channel}")
+        cur.execute(Query.GET_RANDOM_PIN_FROM_CHANNEL, (channel))
     else:
         cur.execute(Query.GET_RANDOM_PIN)
     row = cur.fetchone()
