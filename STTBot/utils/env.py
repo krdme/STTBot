@@ -1,3 +1,6 @@
+# External
+import os
+
 # Internal
 from STTBot.utils import startup
 
@@ -5,6 +8,13 @@ from STTBot.utils import startup
 args = vars(startup.parse_args())
 log = startup.setup_logging(debug=args["debug"])
 cfg = startup.load_config(args["env"])
+
+
+def init_env_vars():
+    os.environ["SLACK_SIGNING_SECRET"] = get_cfg("SLACK_SIGNING_SECRET")
+    os.environ["SLACK_CLIENT_ID"] = get_cfg("SLACK_CLIENT_ID")
+    os.environ["SLACK_CLIENT_SECRET"] = get_cfg("SLACK_CLIENT_SECRET")
+    os.environ["SLACK_SCOPES"] = get_cfg("SLACK_SCOPES")
 
 
 def get_cfg(key):
