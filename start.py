@@ -27,7 +27,6 @@ def start():
         http_server.serve_forever()
     except KeyboardInterrupt:
         env.log.info("Shutting down")
-
         http_server.close()
         env.log.info("Shut down")
 
