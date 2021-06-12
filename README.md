@@ -19,7 +19,7 @@ The bot is now listening on port 3000 locally. You can use a tool like ngrok as 
 
 Assuming your source code is in `~/sttbot/` and your sqlite3 database is in `~/db/`:
 
-1. Update your `.env.prod.json` to have `PATH_DB` point to `/db/sttbot.db`.
+1. Update your `.env.prod.json` to have `PATH_DB` point to `/db/sttbot.db` and `SERVER_HOST` point to `0.0.0.0`. The former must match where you mount the database volume in step 2 and the latter ensures your app listens to requests coming from outwith the Docker container.
 2. Run the following
     ```bash
     docker build -t sttbot ~/sttbot/
