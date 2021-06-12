@@ -57,6 +57,7 @@ def _cmd_pin_add(client, event_data, command, say, ignore_missing=False):
         raise CommandError(f"Need a permalink to pin")
 
     message_json = "{}"
+    pin_msg_details = None
     permalink = Permalink.from_text(command.args[0])
 
     if permalink is None:
@@ -66,11 +67,11 @@ def _cmd_pin_add(client, event_data, command, say, ignore_missing=False):
 
     try:
         pin_msg_details = client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
-    except SlackApiError as e:
+    except SlackApiError:
         if not ignore_missing:
             raise CommandError(f"Could not find a message matching that pin")
 
-    if not ignore_missing and len(pin_msg_details['messages']) == 0:
+    if pin_msg_details is not None and len(pin_msg_details['messages']) == 0 and not ignore_missing:
         raise CommandError("Could not find a message matching that pin")
     else:
         message_json = json.dumps(pin_msg_details['messages'][0])
