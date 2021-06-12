@@ -25,7 +25,7 @@ def get_pin(channel, timestamp):
     if row is None:
         return None
     else:
-        return row[0], row[1], json.loads(row[2])
+        return row[0], row[1], json.loads(row[2]), row[3]
 
 
 def get_random_pin(channel=None):
@@ -40,7 +40,7 @@ def get_random_pin(channel=None):
     if row is None:
         return None
     else:
-        return row[0], row[1], json.loads(row[2])
+        return row[0], row[1], json.loads(row[2]), row[3]
 
 
 def get_all_pins():
@@ -52,12 +52,12 @@ def get_all_pins():
     if len(rows) == 0:
         return None
     else:
-        return [[row[0], row[1], json.loads(row[2])] for row in rows]
+        return [[row[0], row[1], json.loads(row[2]), row[3]] for row in rows]
 
 
-def insert_pin(user, channel, timestamp, message_json):
+def insert_pin(user, channel, timestamp, message_json, permalink):
     cur = get_cur()
-    cur.execute(Query.INSERT_PIN, (user, channel, timestamp, message_json))
+    cur.execute(Query.INSERT_PIN, (user, channel, timestamp, message_json, permalink))
     cur.close()
 
 
@@ -75,8 +75,8 @@ class Table:
 
 class Query:
     GET_ALL_PINS = f"SELECT channel, timestamp, json FROM {Table.PINS} ORDER BY created_at"
-    GET_PIN = f"SELECT channel, timestamp, json FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
-    GET_RANDOM_PIN = f"SELECT channel, timestamp, json FROM {Table.PINS} ORDER BY RANDOM() LIMIT 1"
-    GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json FROM {Table.PINS} WHERE channel = ? ORDER BY RANDOM() LIMIT 1"
-    INSERT_PIN = f"INSERT INTO {Table.PINS} (created_by, channel, timestamp, json) VALUES (?, ?, ?, ?)"
+    GET_PIN = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
+    GET_RANDOM_PIN = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} ORDER BY RANDOM() LIMIT 1"
+    GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? ORDER BY RANDOM() LIMIT 1"
+    INSERT_PIN = f"INSERT INTO {Table.PINS} (created_by, channel, timestamp, json, permalink) VALUES (?, ?, ?, ?, ?)"
     REMOVE_PIN = f"DELETE FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
