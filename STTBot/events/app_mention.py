@@ -79,20 +79,27 @@ def _cmd_pin_add(client, event_data, command, say):
 
 
 def _cmd_pin_load(client, event_data, command, say):
-    channel = event_data["event"].get("channel")
-    pins = client.pins_list(channel=channel)
+    msg_channel = event_data["event"].get("channel")
+    pins = client.pins_list(channel=msg_channel)
     env.log.info(pins)
     added_count = 0
     ignored_count = 0
 
     for pin in pins['items']:
         raw_permalink = pin[pin['type']]['permalink']
-        permalink = Permalink.from_text(raw_permalink)
         message_json = json.dumps(pin[pin['type']])
         env.log.info(f"pin add {raw_permalink}")
 
+        if pin['type'] == "message":
+            permalink = Permalink.from_text(raw_permalink)
+            channel = permalink.channel
+            timestamp = permalink.timestamp
+        elif pin['type'] == "file":
+            channel = pin['file']['pinned_to'][0]
+            timestamp = pin['file']['timestamp']
+
         if data_interface.get_pin(permalink.channel, permalink.timestamp) is None:
-            data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json, raw_permalink)
+            data_interface.insert_pin(event_data["event"].get("user"), channel, timestamp, message_json, raw_permalink)
             added_count += 1
         else:
             ignored_count += 1
