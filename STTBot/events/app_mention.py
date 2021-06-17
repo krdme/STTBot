@@ -89,7 +89,13 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
 
         channel_name = [channel['name'] for channel in channels['channels'] if channel['id'] == message['pinned_to'][0]][0]
         user = [user for user in users['members'] if user['id'] == message['user']][0]
-        reactions = client.reactions_get(channel=message['pinned_to'][0], timestamp=message['ts'])
+
+        try:
+            reactions = client.reactions_get(channel=message['pinned_to'][0], timestamp=message['ts'])
+        except SlackApiError as e:
+            env.log.error(f"Couldn't grab {channel_name} {message['ts']} at {permalink}")
+            continue
+            
         pin_store[permalink]['channel'] = channel_name
         pin_store[permalink]['avatar'] = user['profile']['image_192']
         pin_store[permalink]['user'] = user['name']
