@@ -79,7 +79,7 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
     pin_store = {}
 
     for pin in pins:
-        channel = pin[0]
+        this_channel = pin[0]
         message = pin[2]
         permalink = pin[3]
         pin_store[permalink] = {}
@@ -87,12 +87,12 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         if len(message.keys()) == 0:
             continue
 
-        env.log.info(f"{channel} {message}")
-        channel_name = [channel['name'] for channel in channels['channels'] if channel['id'] == channel][0]
+        env.log.info(f"{this_channel} {message}")
+        channel_name = [channel['name'] for channel in channels['channels'] if channel['id'] == this_channel][0]
         user = [user for user in users['members'] if user['id'] == message['user']][0]
 
         try:
-            reactions = client.reactions_get(channel=channel, timestamp=message['ts'])
+            reactions = client.reactions_get(channel=this_channel, timestamp=message['ts'])
             env.log.info(f"Grabbed reactions for {channel_name} {message['ts']} at {permalink}")
         except SlackApiError:
             env.log.error(f"Couldn't grab {channel_name} {message['ts']} at {permalink}")
