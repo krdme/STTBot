@@ -74,6 +74,7 @@ def _cmd_pin(client, event_data, command, say):
 def _cmd_pin_stats(client: WebClient, event_data, command, say):
     pins = data_interface.get_all_pins()
     channels = client.conversations_list(types="public_channel")
+    env.log.info(channels)
     users = client.users_list()
     pin_store = {}
 
@@ -86,6 +87,7 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         if len(message.keys()) == 0:
             continue
 
+        env.log.info(f"{channel} {message}")
         channel_name = [channel['name'] for channel in channels['channels'] if channel['id'] == channel][0]
         user = [user for user in users['members'] if user['id'] == message['user']][0]
 
