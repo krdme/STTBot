@@ -1,8 +1,10 @@
 # External
+from copy import deepcopy
 import json
 import traceback
 
 # Internal
+from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from STTBot.models.command import Command
 from STTBot.models.permalink import Permalink
@@ -31,15 +33,31 @@ def _handle_user_mention(client, event_data, say):
     try:
         status = matching_cmd[0]['func'](client, event_data, command, say)
         suc_message = f"Successfully processed command `{command.raw_cmd}` in {channel}"
-        return _ret_success(status["message"], suc_message, say)
+        if "message" in status.keys():
+            _ret_success(status["message"], suc_message, say)
+        elif "blocks" in status.keys():
+            _ret_success_blocks(status["blocks"], suc_message, say)
     except Exception as e:
         return _ret_error(e, say)
 
 
 def _cmd_help(client, event_data, command, say):
-    cmds = "\n".join([f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}" for cmd in commands])
+    cmds = "\n".join([
+                         f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
+                         for cmd in commands])
     message = f"Here is everything I can do:\n{cmds}"
     return {"message": message}
+
+
+def _cmd_poll_react(client: WebClient, event_data, command, say):
+    env.log.info(event_data)
+    channel = event_data["event"].get("channel")
+    timestamp = event_data["event"].get("ts")
+    client.reactions_add(channel=channel, timestamp=timestamp, name="one")
+    client.reactions_add(channel=channel, timestamp=timestamp, name="two")
+    client.reactions_add(channel=channel, timestamp=timestamp, name="wastebasket")
+    client.reactions_add(channel=channel, timestamp=timestamp, name="put_litter_in_its_place")
+    return {}
 
 
 def _cmd_pin(client, event_data, command, say):
@@ -51,6 +69,99 @@ def _cmd_pin(client, event_data, command, say):
 
     permalink_msg = message[3]
     return {"message": permalink_msg}
+
+
+def _cmd_pin_stats(client: WebClient, event_data, command, say):
+    channel = event_data["event"].get("channel")
+    pins = data_interface.get_all_pins()
+    channels = client.conversations_list(types="public_channel, private_channel")
+    users = client.users_list()
+    env.log.info(users)
+    pin_store = {}
+
+    for pin in pins:
+        message = pin[2]
+        permalink = pin[3]
+        pin_store[permalink] = {}
+
+        if len(message.keys()) == 0:
+            continue
+
+        channel_name = [channel['name'] for channel in channels['channels'] if channel['id'] == message['pinned_to'][0]][0]
+        user = [user for user in users['members'] if user['id'] == message['user']][0]
+        reactions = client.reactions_get(channel=message['pinned_to'][0], timestamp=message['ts'])
+        pin_store[permalink]['channel'] = channel_name
+        pin_store[permalink]['avatar'] = user['profile']['image_192']
+        pin_store[permalink]['user'] = user['name']
+        pin_store[permalink]['message'] = message['text']
+
+        try:
+            reaction_info = reactions['message']['reactions']
+            reaction_count = 0
+            for reaction in reaction_info:
+                reaction_count += int(reaction['count'])
+            pin_store[permalink]['reaction_count'] = reaction_count
+            pin_store[permalink]['reactions'] = reaction_info
+        except KeyError:
+            pin_store[permalink]['reaction_count'] = 0
+            pin_store[permalink]['reactions'] = {}
+
+    user_count = {}
+    for permalink, details in pin_store.items():
+        user_count.setdefault(details['user'], {'count': 0, 'avatar': details['avatar']})
+        user_count[details['user']]['count'] += 1
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Top Users:*"
+            }
+        },
+        {
+            "type": "divider"
+        }
+    ]
+    block = {
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": ""
+        },
+        "accessory": {
+            "type": "image",
+            "image_url": "",
+            "alt_text": "Avatar"
+        }
+    }
+
+    for user, count_data in sorted(user_count.items(), key=lambda user: user[1]['count'], reverse=True)[:3]:
+        my_block = deepcopy(block)
+        my_block['text']['text'] = f"{user}\n{count_data['count']} pins"
+        my_block['accessory']['image_url'] = count_data['avatar']
+        blocks.append(my_block)
+
+    blocks.extend([
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Top Reactions:*"
+            }
+        }
+    ])
+
+    for permalink, data in sorted(pin_store.items(), key=lambda dt: dt[1]['reaction_count'], reverse=True)[:3]:
+        my_block = deepcopy(block)
+        my_block['text']['text'] = f"{data['user']}\n{data['reaction_count']} reactions\n{data['message']}"
+        my_block['accessory']['image_url'] = data['avatar']
+        blocks.append(my_block)
+
+    return {"blocks": blocks}
 
 
 def _cmd_pin_add(client, event_data, command, say):
@@ -66,7 +177,8 @@ def _cmd_pin_add(client, event_data, command, say):
         raise CommandError("Message is already pinned")
 
     try:
-        pin_msg_details = client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp, limit=1, channel=permalink.channel, inclusive=True)
+        pin_msg_details = client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp,
+                                                       limit=1, channel=permalink.channel, inclusive=True)
     except SlackApiError:
         env.log.warning("Could not find a message matching this permalink, adding with empty json")
 
@@ -75,7 +187,8 @@ def _cmd_pin_add(client, event_data, command, say):
     else:
         message_json = json.dumps(pin_msg_details['messages'][0])
 
-    data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json, command.args[0])
+    data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json,
+                              command.args[0])
     return {"message": ":white_check_mark: Successfully added pin", "added": True}
 
 
@@ -105,7 +218,7 @@ def _cmd_pin_load(client, event_data, command, say):
         else:
             ignored_count += 1
 
-    return {"message":  f":white_check_mark: Successfully loaded {added_count} pins and ignored {ignored_count} pins"}
+    return {"message": f":white_check_mark: Successfully loaded {added_count} pins and ignored {ignored_count} pins"}
 
 
 def _cmd_pin_remove(client, event_data, command, say):
@@ -134,6 +247,12 @@ def _ret_success(ret_message, suc_message, say):
     say(ret_message, unfurl_links=True, unfurl_media=True)
     env.log.info(suc_message)
     return {"message": ret_message}, 200
+
+
+def _ret_success_blocks(blocks, suc_message, say):
+    say(blocks=blocks)
+    env.log.info(suc_message)
+    return {"message": suc_message}, 200
 
 
 commands = [
@@ -175,7 +294,19 @@ commands = [
         ],
         "help": "Removes a message from the database",
         "func": _cmd_pin_remove
-    }
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": "stats",
+        "help": "Gets some stats on pinned messages",
+        "func": _cmd_pin_stats
+    },
+    {
+        "cmd": "poll",
+        "sub_cmd": "react",
+        "help": "Adds reactions for pin showdown",
+        "func": _cmd_poll_react
+    },
 ]
 
 
