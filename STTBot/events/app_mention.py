@@ -73,7 +73,7 @@ def _cmd_pin(client, event_data, command, say):
 
 def _cmd_pin_stats(client: WebClient, event_data, command, say):
     pins = data_interface.get_all_pins()
-    channels = client.conversations_list(types="public_channel")
+    channels = client.conversations_list(types="public_channel,private_channel")
     env.log.info(channels)
     users = client.users_list()
     pin_store = {}
