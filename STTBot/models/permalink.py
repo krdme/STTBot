@@ -17,7 +17,7 @@ class Permalink:
     def from_text(cls, text):
         if re.match(permalink_regex, text):
             server, channel, timestamp = re.findall(permalink_regex, text)[0]
-            timestamp = f"{timestamp[:-6]}.{timestamp[-5:]}"
+            timestamp = f"{timestamp[:-6]}.{timestamp[-6:]}"
             return Permalink(text, server, channel, timestamp)
         else:
             return None

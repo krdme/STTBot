@@ -306,12 +306,14 @@ commands = [
     {
         "cmd": "pin",
         "sub_cmd": "stats",
+        "args": [],
         "help": "Gets some stats on pinned messages",
         "func": _cmd_pin_stats
     },
     {
         "cmd": "poll",
         "sub_cmd": "react",
+        "args": [],
         "help": "Adds reactions for pin showdown",
         "func": _cmd_poll_react
     },
