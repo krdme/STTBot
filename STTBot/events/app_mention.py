@@ -62,14 +62,17 @@ def _cmd_poll_react(client: WebClient, event_data, command, say):
 
 def _cmd_pin(client, event_data, command, say):
     channel = event_data["event"].get("channel")
+    message = data_interface.get_random_pin(channel=channel)
 
-    if len(command.args) > 0:
-        if command.args[0] == "any":
-            message = data_interface.get_random_pin()
-        else:
-            message = data_interface.get_random_pin(channel=channel)
-    else:
-        message = data_interface.get_random_pin(channel=channel)
+    if message is None:
+        raise CommandError("No pins found")
+
+    permalink_msg = message[3]
+    return {"message": permalink_msg}
+
+
+def _cmd_pin_any(client, event_data, command, say):
+    message = data_interface.get_random_pin()
 
     if message is None:
         raise CommandError("No pins found")
@@ -281,11 +284,16 @@ commands = [
     {
         "cmd": "pin",
         "sub_cmd": None,
-        "args": [
-            "any"
-        ],
-        "help": "Prints a random pin",
+        "args": [],
+        "help": "Prints a random pin from this channel",
         "func": _cmd_pin
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": "any",
+        "args": [],
+        "help": "Prints a random pin from any channel",
+        "func": _cmd_pin_any
     },
     {
         "cmd": "pin",
