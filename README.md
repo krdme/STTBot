@@ -7,7 +7,12 @@ A simple Slack bot used for the STT chat built on top of the [Bolt framework](ht
 1. Register your app as described in [Building an app with Bolt for Python](https://api.slack.com/start/building/bolt-python#start). 
 2. From the Slack Developer page, add the following keys to the `.env.example.json` file and rename the file to `.env.prod.json`:
    `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SCOPES`, `SLACK_SIGNING_SECRET`
-3. Run the bot with the following:
+3. Create a sqlite3 database and set the `PATH_DB` in `.env.prod.json` to match
+   ```bash
+   sqlite3 /sttbot/db/sttbot.db
+   sqlite> CREATE TABLE pins ( created_by text not null, channel text not null, timestamp text not null, created_at datetime DEFAULT CURRENT_TIMESTAMP not null, json text, permalink text, primary key ( channel, timestamp) );
+   ```
+4. Run the bot with the following:
     ```bash
     git -C ~/ clone git@github.com:krdme/STTBot.git
     python3.7 ~/sttbot/start.py
