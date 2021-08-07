@@ -27,6 +27,12 @@ def _handle_user_mention(client, event_data, say):
 
     matching_cmd = [command for command in commands if command['cmd'] == cmd and command['sub_cmd'] == sub_cmd]
 
+    # Check whether sub_cmd could be an argument.
+    if len(matching_cmd) == 0:
+        matching_cmd = [command for command in commands if command['cmd'] == cmd and len(command['args']) > 0]
+        if len(matching_cmd) != 0:
+            command.args.insert(0, sub_cmd)
+
     if len(matching_cmd) == 0:
         return _ret_error(f"Unknown command `{command.raw_cmd}`", say)
 
@@ -76,6 +82,23 @@ def _cmd_pin_any(client, event_data, command, say):
 
     if message is None:
         raise CommandError("No pins found")
+
+    permalink_msg = message[3]
+    return {"message": permalink_msg}
+
+
+def _cmd_pin_channel(client, event_data, command, say):
+    # Get channel-id from argument in '<#channel-id|channel-name>' format.
+    channel_id = command.args[0].split('|')[0][2:]
+    message = data_interface.get_random_pin(channel=channel_id)
+
+    if message is None:
+        channels = client.conversations_list()["channels"]
+        matching_channel = [channel for channel in channels if channel["id"] == channel_id]
+        if len(matching_channel) == 0:
+            raise CommandError(f"Channel `{command.args[0]}` not found")
+        else:
+            raise CommandError("No pins found")
 
     permalink_msg = message[3]
     return {"message": permalink_msg}
@@ -294,6 +317,15 @@ commands = [
         "args": [],
         "help": "Prints a random pin from any channel",
         "func": _cmd_pin_any
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": None,
+        "args": [
+            "channel"
+        ],
+        "help": "Prints a random pin from the specified channel",
+        "func": _cmd_pin_channel
     },
     {
         "cmd": "pin",
