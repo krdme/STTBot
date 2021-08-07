@@ -88,9 +88,6 @@ def _cmd_pin_any(client, event_data, command, say):
 
 
 def _cmd_pin_channel(client, event_data, command, say):
-    if len(command.args) == 0:
-        raise CommandError("No channel given")
-
     # Get channel-id from argument in '<#channel-id|channel-name>' format.
     channel_id = command.args[0].split('|')[0][2:]
     message = data_interface.get_random_pin(channel=channel_id)
