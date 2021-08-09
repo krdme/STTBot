@@ -49,8 +49,8 @@ def _handle_user_mention(client, event_data, say):
 
 def _cmd_help(client, event_data, command, say):
     cmds = "\n".join([
-                         f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
-                         for cmd in commands])
+        f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
+        for cmd in commands])
     message = f"Here is everything I can do:\n{cmds}"
     return {"message": message}
 
@@ -164,30 +164,37 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*Top Users:*"
+                "text": "*Top Users*"
             }
-        },
-        {
-            "type": "divider"
         }
     ]
+
     block = {
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": ""
-        },
-        "accessory": {
-            "type": "image",
-            "image_url": "",
-            "alt_text": "Avatar"
-        }
+        "type": "context",
+        "elements": [
+            {
+                "type": "image",
+                "image_url": "",
+                "alt_text": "Avatar"
+            },
+            {
+                "type": "mrkdwn",
+                "text": ""
+            }
+        ]
     }
 
-    for user, count_data in sorted(user_count.items(), key=lambda user: user[1]['count'], reverse=True)[:3]:
+    medals = {
+        1: " :first_place_medal:",
+        2: " :second_place_medal:",
+        3: " :third_place_medal:"
+    }
+
+    for i, (user, count_data) in enumerate(sorted(user_count.items(), key=lambda user: user[1]['count']
+            , reverse=True)[:3], start=1):
         my_block = deepcopy(block)
-        my_block['text']['text'] = f"{user}\n{count_data['count']} pins"
-        my_block['accessory']['image_url'] = count_data['avatar']
+        my_block['elements'][0]['image_url'] = count_data['avatar']
+        my_block['elements'][1]['text'] = f"*{user}{medals.get(i, '')}*\n{count_data['count']} pins"
         blocks.append(my_block)
 
     blocks.extend([
@@ -198,15 +205,16 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*Top Reactions:*"
+                "text": "*Top Reactions*"
             }
         }
     ])
 
-    for permalink, data in sorted(pin_store.items(), key=lambda dt: dt[1].get('reaction_count', 0), reverse=True)[:3]:
+    for i, (permalink, data) in enumerate(sorted(pin_store.items(), key=lambda dt: dt[1].get('reaction_count', 0)
+            , reverse=True)[:3], start=1):
         my_block = deepcopy(block)
-        my_block['text']['text'] = f"{data['user']}\n{data.get('reaction_count', 0)} reactions\n{data['message']}"
-        my_block['accessory']['image_url'] = data['avatar']
+        my_block['elements'][0]['image_url'] = data['avatar']
+        my_block['elements'][1]['text'] = f"*{data['user']}{medals.get(i, '')}*\n{data.get('reaction_count', 0)} reactions\n_{data['message']}_"
         blocks.append(my_block)
 
     return {"blocks": blocks}
