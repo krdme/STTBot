@@ -158,7 +158,6 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
             user_count[details['user']]['count'] += 1
         except KeyError:
             env.log.error(f"Failed to count {permalink}")
-            pass
 
     blocks = [
         {
