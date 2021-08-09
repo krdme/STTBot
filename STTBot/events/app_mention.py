@@ -115,14 +115,17 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         this_channel = pin[0]
         message = pin[2]
         permalink = pin[3]
-        pin_store[permalink] = {}
 
         if len(message.keys()) == 0:
             continue
 
         env.log.info(f"{this_channel} {message}")
         channel_name = [channel['name'] for channel in channels['channels'] if channel['id'] == this_channel][0]
-        user = [user for user in users['members'] if user['id'] == message['user']][0]
+        try:
+            user = [user for user in users['members'] if user['id'] == message['user']][0]
+        except KeyError:
+            env.log.error(f"Probably couldn't get userid for {channel_name} {message['ts']} at {permalink}")
+            continue
 
         try:
             reactions = client.reactions_get(channel=this_channel, timestamp=message['ts'])
@@ -131,6 +134,7 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
             env.log.error(f"Couldn't grab {channel_name} {message['ts']} at {permalink}")
             continue
 
+        pin_store[permalink] = {}
         pin_store[permalink]['channel'] = channel_name
         pin_store[permalink]['avatar'] = user['profile']['image_192']
         pin_store[permalink]['user'] = user['name']
