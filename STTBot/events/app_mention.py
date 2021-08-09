@@ -115,6 +115,7 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         this_channel = pin[0]
         message = pin[2]
         permalink = pin[3]
+        pin_store[permalink] = {}
 
         if len(message.keys()) == 0:
             continue
@@ -133,12 +134,11 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         except SlackApiError:
             env.log.error(f"Couldn't grab {channel_name} {message['ts']} at {permalink}")
             continue
-
-        pin_store[permalink] = {}
-        pin_store[permalink]['channel'] = channel_name
-        pin_store[permalink]['avatar'] = user['profile']['image_192']
-        pin_store[permalink]['user'] = user['name']
-        pin_store[permalink]['message'] = message['text']
+        finally:
+            pin_store[permalink]['channel'] = channel_name
+            pin_store[permalink]['avatar'] = user['profile']['image_192']
+            pin_store[permalink]['user'] = user['name']
+            pin_store[permalink]['message'] = message['text']
 
         try:
             reaction_info = reactions['message']['reactions']
@@ -153,8 +153,12 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
 
     user_count = {}
     for permalink, details in pin_store.items():
-        user_count.setdefault(details['user'], {'count': 0, 'avatar': details['avatar']})
-        user_count[details['user']]['count'] += 1
+        try:
+            user_count.setdefault(details['user'], {'count': 0, 'avatar': details['avatar']})
+            user_count[details['user']]['count'] += 1
+        except KeyError:
+            env.log.error(f"Failed to count {permalink}")
+            pass
 
     blocks = [
         {
@@ -200,9 +204,9 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         }
     ])
 
-    for permalink, data in sorted(pin_store.items(), key=lambda dt: dt[1]['reaction_count'], reverse=True)[:3]:
+    for permalink, data in sorted(pin_store.items(), key=lambda dt: dt[1].get('reaction_count', 0), reverse=True)[:3]:
         my_block = deepcopy(block)
-        my_block['text']['text'] = f"{data['user']}\n{data['reaction_count']} reactions\n{data['message']}"
+        my_block['text']['text'] = f"{data['user']}\n{data.get('reaction_count', 0)} reactions\n{data['message']}"
         my_block['accessory']['image_url'] = data['avatar']
         blocks.append(my_block)
 
