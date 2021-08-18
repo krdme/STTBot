@@ -104,17 +104,17 @@ def _cmd_pin_channel(client, event_data, command, say):
     return {"message": permalink_msg}
 
 
-def _get_top_users(users):
+def _get_top_users(users, pins):
     """Returns dict with the necessary data to create a top users leaderboard.
 
     Args:
         users: Return value of client.users_list().
+        pins: The set of pins to be counted.
 
     Returns:
         A dict mapping usernames to a dict containing pin count and avatar URL. For example:
         {'user1': {'count': 3, 'avatar': <url.img>}, ...}
     """
-    pins = data_interface.get_all_pins()
     pin_store = {}
     for pin in pins:
         message = pin[2]
@@ -245,14 +245,15 @@ def _build_stats_block(header, entries):
     return stats_block
 
 
-def _build_top_users_block(users, max_entries: int):
+def _build_top_users_block(users, pins, max_entries: int):
     """Returns a list of Slack blocks forming a top users leaderboard.
 
     Args:
         users: Return value of client.users_list().
+        pins: The set of pins to be counted.
         max_entries: Maximum number of leaderboard entries to display.
     """
-    user_count = _get_top_users(users)
+    user_count = _get_top_users(users, pins)
     entries = []
     for user, count_data in sorted(user_count.items(), key=lambda user: user[1]['count'], reverse=True)[:max_entries]:
         entries.append({
@@ -285,11 +286,26 @@ def _build_top_reactions_block(users, client, max_entries: int):
 
 def _cmd_pin_stats(client: WebClient, event_data, command, say):
     users = client.users_list()
+    pins = data_interface.get_all_pins()
 
     blocks = []
-    blocks.extend(_build_top_users_block(users, max_entries=3))
+    blocks.extend(_build_top_users_block(users, pins, max_entries=3))
     blocks.append({"type": "divider"})
     blocks.extend(_build_top_reactions_block(users, client, max_entries=3))
+
+    return {"blocks": blocks}
+
+
+def _cmd_pin_leaderboard(client: WebClient, event_data, command, say):
+    users = client.users_list()
+    channel = event_data["event"].get("channel")
+    pins = data_interface.get_all_pins(channel=channel)
+
+    if pins is None:
+        raise CommandError("No pinned items in this channel")
+
+    blocks = []
+    blocks.extend(_build_top_users_block(users, pins, max_entries=5))
 
     return {"blocks": blocks}
 
@@ -440,6 +456,13 @@ commands = [
         ],
         "help": "Removes a message from the database",
         "func": _cmd_pin_remove
+    },
+    {
+        "cmd": "pin",
+        "sub_cmd": "leaderboard",
+        "args": [],
+        "help": "Gets top users from this channel",
+        "func": _cmd_pin_leaderboard
     },
     {
         "cmd": "pin",

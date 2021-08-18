@@ -43,9 +43,12 @@ def get_random_pin(channel=None):
         return row[0], row[1], json.loads(row[2]), row[3]
 
 
-def get_all_pins():
+def get_all_pins(channel=None):
     cur = get_cur()
-    cur.execute(Query.GET_ALL_PINS)
+    if channel is not None:
+        cur.execute(Query.GET_ALL_PINS_FROM_CHANNEL, [channel])
+    else:
+        cur.execute(Query.GET_ALL_PINS)
     rows = cur.fetchall()
     cur.close()
 
@@ -75,6 +78,7 @@ class Table:
 
 class Query:
     GET_ALL_PINS = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} ORDER BY created_at"
+    GET_ALL_PINS_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? ORDER BY created_at"
     GET_PIN = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
     GET_RANDOM_PIN = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} ORDER BY RANDOM() LIMIT 1"
     GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? ORDER BY RANDOM() LIMIT 1"
