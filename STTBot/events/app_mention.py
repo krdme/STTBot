@@ -1,15 +1,15 @@
 # External
-from copy import deepcopy
 import json
 import traceback
 
 # Internal
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+
+import STTBot.data_interface as data_interface
 from STTBot.models.command import Command
 from STTBot.models.permalink import Permalink
 from STTBot.utils import env
-import STTBot.data_interface as data_interface
 
 
 def handle(client, event_data, say):
@@ -49,8 +49,8 @@ def _handle_user_mention(client, event_data, say):
 
 def _cmd_help(client, event_data, command, say):
     cmds = "\n".join([
-                         f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
-                         for cmd in commands])
+        f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
+        for cmd in commands])
     message = f"Here is everything I can do:\n{cmds}"
     return {"message": message}
 
@@ -104,13 +104,56 @@ def _cmd_pin_channel(client, event_data, command, say):
     return {"message": permalink_msg}
 
 
-def _cmd_pin_stats(client: WebClient, event_data, command, say):
-    pins = data_interface.get_all_pins()
-    channels = client.conversations_list(types="public_channel,private_channel")
-    env.log.info(channels)
-    users = client.users_list()
-    pin_store = {}
+def _get_top_users(users):
+    """Returns dict with the necessary data to create a top users leaderboard.
 
+    Args:
+        users: Return value of client.users_list().
+
+    Returns:
+        A dict mapping usernames to a dict containing pin count and avatar URL. For example:
+        {'user1': {'count': 3, 'avatar': <url.img>}, ...}
+    """
+    pins = data_interface.get_all_pins()
+    pin_store = {}
+    for pin in pins:
+        message = pin[2]
+        permalink = pin[3]
+        pin_store[permalink] = {}
+
+        if len(message.keys()) == 0:
+            continue
+
+        try:
+            user = [user for user in users['members'] if user['id'] == message['user']][0]
+        except KeyError:
+            env.log.error(f"Probably couldn't get userid for {message['ts']} at {permalink}")
+            continue
+
+        pin_store[permalink]['avatar'] = user['profile']['image_192']
+        pin_store[permalink]['user'] = user['name']
+
+    user_count = {}
+    for permalink, details in pin_store.items():
+        try:
+            user_count.setdefault(details['user'], {'count': 0, 'avatar': details['avatar']})
+            user_count[details['user']]['count'] += 1
+        except KeyError:
+            env.log.error(f"Failed to count {permalink} {details}")
+    return user_count
+
+
+def _get_top_reactions(users, client: WebClient):
+    """Returns dict with the necessary data to create a top reactions leaderboard.
+
+    Args:
+        users: Return value of client.users_list().
+        client: A Slack WebClient object.
+    Returns:
+        {permalink: {'avatar': value, 'user': value, 'message': value, 'reaction_count': value, 'reactions': value}, ...}
+    """
+    pins = data_interface.get_all_pins()
+    pin_store = {}
     for pin in pins:
         this_channel = pin[0]
         message = pin[2]
@@ -120,25 +163,22 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         if len(message.keys()) == 0:
             continue
 
-        env.log.info(f"{this_channel} {message}")
-        channel_name = [channel['name'] for channel in channels['channels'] if channel['id'] == this_channel][0]
         try:
             user = [user for user in users['members'] if user['id'] == message['user']][0]
         except KeyError:
-            env.log.error(f"Probably couldn't get userid for {channel_name} {message['ts']} at {permalink}")
+            env.log.error(f"Probably couldn't get userid for {message['ts']} at {permalink}")
             continue
 
         try:
             reactions = client.reactions_get(channel=this_channel, timestamp=message['ts'])
-            env.log.info(f"Grabbed reactions for {channel_name} {message['ts']} at {permalink}")
+            env.log.info(f"Grabbed reactions for {message['ts']} at {permalink}")
         except SlackApiError:
-            env.log.error(f"Couldn't grab {channel_name} {message['ts']} at {permalink}")
+            env.log.error(f"Couldn't grab {message['ts']} at {permalink}")
             continue
-        finally:
-            pin_store[permalink]['channel'] = channel_name
-            pin_store[permalink]['avatar'] = user['profile']['image_192']
-            pin_store[permalink]['user'] = user['name']
-            pin_store[permalink]['message'] = message['text']
+
+        pin_store[permalink]['avatar'] = user['profile']['image_192']
+        pin_store[permalink]['user'] = user['name']
+        pin_store[permalink]['message'] = message['text']
 
         try:
             reaction_info = reactions['message']['reactions']
@@ -150,64 +190,106 @@ def _cmd_pin_stats(client: WebClient, event_data, command, say):
         except KeyError:
             pin_store[permalink]['reaction_count'] = 0
             pin_store[permalink]['reactions'] = {}
+    return pin_store
 
-    user_count = {}
-    for permalink, details in pin_store.items():
-        try:
-            user_count.setdefault(details['user'], {'count': 0, 'avatar': details['avatar']})
-            user_count[details['user']]['count'] += 1
-        except KeyError:
-            env.log.error(f"Failed to count {permalink}")
 
-    blocks = [
-        {
-            "type": "section",
-            "text": {
+def _build_block(avatar: str, name: str, text: str):
+    """Returns a Slack block displaying avatar, name and text.
+
+    Args:
+        avatar: An image URL.
+        name: The name to be displayed next to the avatar.
+        text: Slack Markdown text displayed below the name. Use \n for newlines.
+    """
+    return {
+        "type": "context",
+        "elements": [
+            {
+                "type": "image",
+                "image_url": avatar,
+                "alt_text": "Avatar"
+            },
+            {
                 "type": "mrkdwn",
-                "text": "*Top Users:*"
+                "text": f"*{name}*\n{text}"
             }
-        },
-        {
-            "type": "divider"
-        }
-    ]
-    block = {
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": ""
-        },
-        "accessory": {
-            "type": "image",
-            "image_url": "",
-            "alt_text": "Avatar"
-        }
+        ]
     }
 
-    for user, count_data in sorted(user_count.items(), key=lambda user: user[1]['count'], reverse=True)[:3]:
-        my_block = deepcopy(block)
-        my_block['text']['text'] = f"{user}\n{count_data['count']} pins"
-        my_block['accessory']['image_url'] = count_data['avatar']
-        blocks.append(my_block)
 
-    blocks.extend([
-        {
-            "type": "divider"
-        },
+def _build_stats_block(header, entries):
+    """Returns a list of Slack blocks forming a leaderboard style display.
+
+    Args:
+        header (str): The header displayed above the leaderboard entries.
+        entries: A list of dicts with keys: avatar (str), name (str) and text (str).
+          The list is assumed to be sorted by order of placement: 1st, 2nd, 3rd, etc.
+    """
+    medals = {
+        1: " :first_place_medal:",
+        2: " :second_place_medal:",
+        3: " :third_place_medal:"
+    }
+    stats_block = [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*Top Reactions:*"
+                "text": f"*{header}*"
             }
         }
-    ])
+    ]
+    for i, item in enumerate(entries, start=1):
+        stats_block.append(_build_block(item['avatar'], f"{item['name']}{medals.get(i, '')}", item['text']))
 
-    for permalink, data in sorted(pin_store.items(), key=lambda dt: dt[1].get('reaction_count', 0), reverse=True)[:3]:
-        my_block = deepcopy(block)
-        my_block['text']['text'] = f"{data['user']}\n{data.get('reaction_count', 0)} reactions\n{data['message']}"
-        my_block['accessory']['image_url'] = data['avatar']
-        blocks.append(my_block)
+    return stats_block
+
+
+def _build_top_users_block(users, max_entries: int):
+    """Returns a list of Slack blocks forming a top users leaderboard.
+
+    Args:
+        users: Return value of client.users_list().
+        max_entries: Maximum number of leaderboard entries to display.
+    """
+    user_count = _get_top_users(users)
+    entries = []
+    for user, count_data in sorted(user_count.items(), key=lambda user: user[1]['count'], reverse=True)[:max_entries]:
+        entries.append({
+            'avatar': count_data['avatar'],
+            'name': f"{user}",
+            'text': f"{count_data['count']} pins"
+        })
+    return _build_stats_block("Top Users", entries)
+
+
+def _build_top_reactions_block(users, client, max_entries: int):
+    """Returns a list of Slack blocks forming a top reactions leaderboard.
+
+    Args:
+        users: Return value of client.users_list().
+        client: A Slack WebClient object.
+        max_entries: Maximum number of leaderboard entries to display.
+    """
+    pin_store = _get_top_reactions(users, client)
+    entries = []
+    for permalink, data in sorted(pin_store.items(), key=lambda dt: dt[1].get('reaction_count', 0),
+                                  reverse=True)[:max_entries]:
+        entries.append({
+            'avatar': data['avatar'],
+            'name': f"{data['user']}",
+            'text': f"{data.get('reaction_count', 0)} reactions\n_{data['message']}_"
+        })
+    return _build_stats_block("Top Reactions", entries)
+
+
+def _cmd_pin_stats(client: WebClient, event_data, command, say):
+    users = client.users_list()
+
+    blocks = []
+    blocks.extend(_build_top_users_block(users, max_entries=3))
+    blocks.append({"type": "divider"})
+    blocks.extend(_build_top_reactions_block(users, client, max_entries=3))
 
     return {"blocks": blocks}
 
