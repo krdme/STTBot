@@ -176,6 +176,7 @@ def _get_top_reactions(users, client: WebClient):
             env.log.error(f"Couldn't grab {message['ts']} at {permalink}")
             continue
 
+        pin_store[permalink] = {}
         pin_store[permalink]['avatar'] = user['profile']['image_192']
         pin_store[permalink]['user'] = user['name']
         pin_store[permalink]['message'] = message['text']
