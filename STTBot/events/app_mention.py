@@ -310,7 +310,7 @@ def _cmd_STT_draft(client, event_data, command, say):
         draft_order = command.args
         random.shuffle(draft_order)
     x = ' '    
-    return {"message": f":robot_face: Order generated: {x.join(draft_order)}}  
+    return {"message": f":robot_face: Order generated: {x.join(draft_order)}"}  
    
 def _ret_error(error, say):
     say(f":warning: {error}")
