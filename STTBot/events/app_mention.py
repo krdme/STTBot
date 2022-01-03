@@ -304,7 +304,7 @@ def _cmd_pin_remove(client, event_data, command, say):
     return {"message": ":white_check_mark: Successfully removed pin"}
 
 def _cmd_STT_draft(client, event_data, command, say):
-    if len(command.args) == 0;
+    if len(command.args) == 0:
         raise CommandError("No list provided")
     else:
         draft_order = command.args
