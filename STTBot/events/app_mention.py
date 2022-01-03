@@ -142,58 +142,7 @@ def _get_top_users(users, pins):
             env.log.error(f"Failed to count {permalink} {details}")
     return user_count
 
-
-def _get_top_reactions(users, client: WebClient):
-    """Returns dict with the necessary data to create a top reactions leaderboard.
-
-    Args:
-        users: Return value of client.users_list().
-        client: A Slack WebClient object.
-    Returns:
-        {permalink: {'avatar': value, 'user': value, 'message': value, 'reaction_count': value, 'reactions': value}, ...}
-    """
-    pins = data_interface.get_all_pins()
-    pin_store = {}
-    for pin in pins:
-        this_channel = pin[0]
-        message = pin[2]
-        permalink = pin[3]
-        pin_store[permalink] = {}
-
-        if len(message.keys()) == 0:
-            continue
-
-        try:
-            user = [user for user in users['members'] if user['id'] == message['user']][0]
-        except KeyError:
-            env.log.error(f"Probably couldn't get userid for {message['ts']} at {permalink}")
-            continue
-
-        try:
-            reactions = client.reactions_get(channel=this_channel, timestamp=message['ts'])
-            env.log.info(f"Grabbed reactions for {message['ts']} at {permalink}")
-        except SlackApiError:
-            env.log.error(f"Couldn't grab {message['ts']} at {permalink}")
-            continue
-
-        pin_store[permalink] = {}
-        pin_store[permalink]['avatar'] = user['profile']['image_192']
-        pin_store[permalink]['user'] = user['name']
-        pin_store[permalink]['message'] = message['text']
-
-        try:
-            reaction_info = reactions['message']['reactions']
-            reaction_count = 0
-            for reaction in reaction_info:
-                reaction_count += int(reaction['count'])
-            pin_store[permalink]['reaction_count'] = reaction_count
-            pin_store[permalink]['reactions'] = reaction_info
-        except KeyError:
-            pin_store[permalink]['reaction_count'] = 0
-            pin_store[permalink]['reactions'] = {}
-    return pin_store
-
-
+  
 def _build_block(avatar: str, name: str, text: str):
     """Returns a Slack block displaying avatar, name and text.
 
@@ -265,42 +214,13 @@ def _build_top_users_block(users, pins, max_entries: int):
     return _build_stats_block("Top Users", entries)
 
 
-def _build_top_reactions_block(users, client, max_entries: int):
-    """Returns a list of Slack blocks forming a top reactions leaderboard.
-
-    Args:
-        users: Return value of client.users_list().
-        client: A Slack WebClient object.
-        max_entries: Maximum number of leaderboard entries to display.
-    """
-    pin_store = _get_top_reactions(users, client)
-    entries = []
-    for permalink, data in sorted(pin_store.items(), key=lambda dt: dt[1].get('reaction_count', 0),
-                                  reverse=True)[:max_entries]:
-        entries.append({
-            'avatar': data['avatar'],
-            'name': f"{data['user']}",
-            'text': f"{data.get('reaction_count', 0)} reactions\n_{data['message']}_"
-        })
-    return _build_stats_block("Top Reactions", entries)
-
-
-def _cmd_pin_stats(client: WebClient, event_data, command, say):
-    users = client.users_list()
-    pins = data_interface.get_all_pins()
-
-    blocks = []
-    blocks.extend(_build_top_users_block(users, pins, max_entries=3))
-    blocks.append({"type": "divider"})
-    blocks.extend(_build_top_reactions_block(users, client, max_entries=3))
-
-    return {"blocks": blocks}
-
-
 def _cmd_pin_leaderboard(client: WebClient, event_data, command, say):
     users = client.users_list()
-    channel = event_data["event"].get("channel")
-    pins = data_interface.get_all_pins(channel=channel)
+    if len(command.args) == 1 and command.args[0] == "all":
+        pins = data_interface.get_all_pins()
+    else:
+        channel = event_data["event"].get("channel")
+        pins = data_interface.get_all_pins(channel=channel)
 
     if pins is None:
         raise CommandError("No pinned items in this channel")
@@ -469,16 +389,11 @@ commands = [
     {
         "cmd": "pin",
         "sub_cmd": "leaderboard",
-        "args": [],
-        "help": "Gets top users from this channel",
+        "args": [
+            "all"
+        ],
+        "help": "Gets top users from this channel by default, or all channels if `all` is provided as an argument",
         "func": _cmd_pin_leaderboard
-    },
-    {
-        "cmd": "pin",
-        "sub_cmd": "stats",
-        "args": [],
-        "help": "Gets some stats on pinned messages",
-        "func": _cmd_pin_stats
     },
     {
         "cmd": "poll",
