@@ -1,6 +1,7 @@
 # External
 import json
 import traceback
+import random
 
 # Internal
 from slack_sdk import WebClient
@@ -142,7 +143,7 @@ def _get_top_users(users, pins):
             env.log.error(f"Failed to count {permalink} {details}")
     return user_count
 
-
+  
 def _build_block(avatar: str, name: str, text: str):
     """Returns a Slack block displaying avatar, name and text.
 
@@ -302,7 +303,15 @@ def _cmd_pin_remove(client, event_data, command, say):
     data_interface.remove_pin(permalink.channel, permalink.timestamp)
     return {"message": ":white_check_mark: Successfully removed pin"}
 
-
+def _cmd_STT_draft(client, event_data, command, say):
+    if len(command.args) == 0;
+        raise CommandError("No list provided")
+    else:
+        draft_order = command.args
+        random.shuffle(draft_order)
+    ex = ' '    
+    return {"message": f":robot_face: Order generated: {ex.join(draft_order)}"}  
+   
 def _ret_error(error, say):
     say(f":warning: {error}")
     env.log.warning(error)
@@ -394,6 +403,16 @@ commands = [
         "help": "Adds reactions for pin showdown",
         "func": _cmd_poll_react
     },
+    {
+        "cmd": "STT",
+        "sub_cmd": "Draft",
+        "args": [
+            "list_of_users"
+        ],
+        "help": "Randomises order of users for STT Draft",
+        "func": _cmd_STT_draft
+    },
+    
 ]
 
 
