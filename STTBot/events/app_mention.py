@@ -1,6 +1,7 @@
 # External
 import json
 import traceback
+import random
 
 # Internal
 from slack_sdk import WebClient
@@ -302,14 +303,14 @@ def _cmd_pin_remove(client, event_data, command, say):
     data_interface.remove_pin(permalink.channel, permalink.timestamp)
     return {"message": ":white_check_mark: Successfully removed pin"}
 
-def _STT_draft(client, event_data, command, say):
+def _cmd_STT_draft(client, event_data, command, say):
     if len(command.args) == 0;
         raise CommandError("No list provided")
     else:
         draft_order = command.args
         random.shuffle(draft_order)
-        
-    return {"message": ":robot_face: Order generated:", draft_order}  
+    x = ' '    
+    return {"message": f":robot_face: Order generated: {x.join(draft_order)}}  
    
 def _ret_error(error, say):
     say(f":warning: {error}")
@@ -406,7 +407,7 @@ commands = [
         "cmd": "STT",
         "sub_cmd": "Draft",
         "args": [
-            "list"
+            "list_of_users"
         ],
         "help": "Randomises order of users for STT Draft",
         "func": _cmd_STT_draft
