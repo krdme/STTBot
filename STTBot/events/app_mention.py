@@ -207,7 +207,7 @@ def _cmd_msg_leaderboard(client, event_data, command, say):
             search_string = " ".join(command.args[1:])
             display_search_string = search_string
         else:
-            search_string = f"\\b{' '.join(command.args)}\\b"
+            search_string = f"\\b{' '.join(command.args).lower()}\\b"
             display_search_string = search_string[2:-2]
 
         leaderboard = data_interface.get_msg_leaderboard(search_string)
