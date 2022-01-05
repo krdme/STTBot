@@ -26,7 +26,7 @@ def setup_logging(debug=False):
     flask_log.disabled = True
     log = logging.getLogger("STTBot")
     ch = logging.StreamHandler()
-    formatter = logging.Formatter("%(asctime)s — %(funcName)-20.20s — %(levelname)-4.4s — %(message)s")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)-5.5s - %(message)s")
     ch.setFormatter(formatter)
     log.addHandler(ch)
     if debug:
