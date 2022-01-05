@@ -56,15 +56,7 @@ def _cmd_help(client, event_data, command, say):
     return {"message": message}
 
 
-def _cmd_poll_react(client: WebClient, event_data, command, say):
-    env.log.info(event_data)
-    channel = event_data["event"].get("channel")
-    timestamp = event_data["event"].get("ts")
-    client.reactions_add(channel=channel, timestamp=timestamp, name="one")
-    client.reactions_add(channel=channel, timestamp=timestamp, name="two")
-    client.reactions_add(channel=channel, timestamp=timestamp, name="wastebasket")
-    client.reactions_add(channel=channel, timestamp=timestamp, name="put_litter_in_its_place")
-    return {}
+# - Pin commands - #
 
 
 def _cmd_pin(client, event_data, command, say):
@@ -105,6 +97,111 @@ def _cmd_pin_channel(client, event_data, command, say):
     return {"message": permalink_msg}
 
 
+def _cmd_pin_add(client, event_data, command, say):
+    if len(command.args) == 0:
+        raise CommandError(f"Need a permalink to pin")
+
+    message_json = "{}"
+    permalink = Permalink.from_text(command.args[0])
+
+    if permalink is None:
+        raise CommandError(f"{command.args[0]} does not seem like a valid permalink")
+    elif data_interface.get_pin(permalink.channel, permalink.timestamp) is not None:
+        raise CommandError("Message is already pinned")
+
+    try:
+        pin_msg_details = client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp,
+                                                       limit=1, channel=permalink.channel, inclusive=True)
+    except SlackApiError:
+        env.log.warning("Could not find a message matching this permalink, adding with empty json")
+
+    if len(pin_msg_details['messages']) == 0:
+        env.log.warning("Could not find a message matching this permalink, adding with empty json")
+    else:
+        message_json = json.dumps(pin_msg_details['messages'][0])
+
+    data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json,
+                              command.args[0])
+    return {"message": ":white_check_mark: Successfully added pin", "added": True}
+
+
+def _cmd_pin_remove(client, event_data, command, say):
+    if len(command.args) == 0:
+        raise CommandError(f"Need a permalink to remove")
+
+    permalink = Permalink.from_text(command.args[0])
+
+    if permalink is None:
+        raise CommandError("Message does not seem like a valid permalink")
+    elif data_interface.get_pin(permalink.channel, permalink.timestamp) is None:
+        raise CommandError("No matching pin found")
+
+    data_interface.remove_pin(permalink.channel, permalink.timestamp)
+    return {"message": ":white_check_mark: Successfully removed pin"}
+
+
+def _cmd_pin_load(client, event_data, command, say):
+    msg_channel = event_data["event"].get("channel")
+    pins = client.pins_list(channel=msg_channel)
+    env.log.info(pins)
+    added_count = 0
+    ignored_count = 0
+
+    for pin in pins['items']:
+        raw_permalink = pin[pin['type']]['permalink']
+        message_json = json.dumps(pin[pin['type']])
+        env.log.info(f"pin add {raw_permalink}")
+
+        if pin['type'] == "message":
+            permalink = Permalink.from_text(raw_permalink)
+            channel = permalink.channel
+            timestamp = permalink.timestamp
+        elif pin['type'] == "file":
+            channel = pin['file']['pinned_to'][0]
+            timestamp = pin['file']['timestamp']
+
+        if data_interface.get_pin(permalink.channel, permalink.timestamp) is None:
+            data_interface.insert_pin(event_data["event"].get("user"), channel, timestamp, message_json, raw_permalink)
+            added_count += 1
+        else:
+            ignored_count += 1
+
+    return {"message": f":white_check_mark: Successfully loaded {added_count} pins and ignored {ignored_count} pins"}
+
+
+def _cmd_pin_leaderboard(client: WebClient, event_data, command, say):
+    users = client.users_list()
+    if len(command.args) == 1 and command.args[0] == "all":
+        pins = data_interface.get_all_pins()
+    else:
+        channel = event_data["event"].get("channel")
+        pins = data_interface.get_all_pins(channel=channel)
+
+    if pins is None:
+        raise CommandError("No pinned items in this channel")
+
+    blocks = []
+    blocks.extend(_build_top_users_block(users, pins, max_entries=5))
+
+    return {"blocks": blocks}
+
+
+# - Other commands - #
+
+
+def _cmd_stt_draft(client, event_data, command, say):
+    if len(command.args) == 0:
+        raise CommandError("No list provided")
+    else:
+        draft_order = command.args
+        random.shuffle(draft_order)
+    ex = ' '    
+    return {"message": f":robot_face: Order generated: {ex.join(draft_order)}"}  
+
+
+# - Helpers - #
+
+
 def _get_top_users(users, pins):
     """Returns dict with the necessary data to create a top users leaderboard.
 
@@ -143,7 +240,7 @@ def _get_top_users(users, pins):
             env.log.error(f"Failed to count {permalink} {details}")
     return user_count
 
-  
+
 def _build_block(avatar: str, name: str, text: str):
     """Returns a Slack block displaying avatar, name and text.
 
@@ -215,103 +312,6 @@ def _build_top_users_block(users, pins, max_entries: int):
     return _build_stats_block("Top Users", entries)
 
 
-def _cmd_pin_leaderboard(client: WebClient, event_data, command, say):
-    users = client.users_list()
-    if len(command.args) == 1 and command.args[0] == "all":
-        pins = data_interface.get_all_pins()
-    else:
-        channel = event_data["event"].get("channel")
-        pins = data_interface.get_all_pins(channel=channel)
-
-    if pins is None:
-        raise CommandError("No pinned items in this channel")
-
-    blocks = []
-    blocks.extend(_build_top_users_block(users, pins, max_entries=5))
-
-    return {"blocks": blocks}
-
-
-def _cmd_pin_add(client, event_data, command, say):
-    if len(command.args) == 0:
-        raise CommandError(f"Need a permalink to pin")
-
-    message_json = "{}"
-    permalink = Permalink.from_text(command.args[0])
-
-    if permalink is None:
-        raise CommandError(f"{command.args[0]} does not seem like a valid permalink")
-    elif data_interface.get_pin(permalink.channel, permalink.timestamp) is not None:
-        raise CommandError("Message is already pinned")
-
-    try:
-        pin_msg_details = client.conversations_history(earliest=permalink.timestamp, latest=permalink.timestamp,
-                                                       limit=1, channel=permalink.channel, inclusive=True)
-    except SlackApiError:
-        env.log.warning("Could not find a message matching this permalink, adding with empty json")
-
-    if len(pin_msg_details['messages']) == 0:
-        env.log.warning("Could not find a message matching this permalink, adding with empty json")
-    else:
-        message_json = json.dumps(pin_msg_details['messages'][0])
-
-    data_interface.insert_pin(event_data["event"].get("user"), permalink.channel, permalink.timestamp, message_json,
-                              command.args[0])
-    return {"message": ":white_check_mark: Successfully added pin", "added": True}
-
-
-def _cmd_pin_load(client, event_data, command, say):
-    msg_channel = event_data["event"].get("channel")
-    pins = client.pins_list(channel=msg_channel)
-    env.log.info(pins)
-    added_count = 0
-    ignored_count = 0
-
-    for pin in pins['items']:
-        raw_permalink = pin[pin['type']]['permalink']
-        message_json = json.dumps(pin[pin['type']])
-        env.log.info(f"pin add {raw_permalink}")
-
-        if pin['type'] == "message":
-            permalink = Permalink.from_text(raw_permalink)
-            channel = permalink.channel
-            timestamp = permalink.timestamp
-        elif pin['type'] == "file":
-            channel = pin['file']['pinned_to'][0]
-            timestamp = pin['file']['timestamp']
-
-        if data_interface.get_pin(permalink.channel, permalink.timestamp) is None:
-            data_interface.insert_pin(event_data["event"].get("user"), channel, timestamp, message_json, raw_permalink)
-            added_count += 1
-        else:
-            ignored_count += 1
-
-    return {"message": f":white_check_mark: Successfully loaded {added_count} pins and ignored {ignored_count} pins"}
-
-
-def _cmd_pin_remove(client, event_data, command, say):
-    if len(command.args) == 0:
-        raise CommandError(f"Need a permalink to remove")
-
-    permalink = Permalink.from_text(command.args[0])
-
-    if permalink is None:
-        raise CommandError("Message does not seem like a valid permalink")
-    elif data_interface.get_pin(permalink.channel, permalink.timestamp) is None:
-        raise CommandError("No matching pin found")
-
-    data_interface.remove_pin(permalink.channel, permalink.timestamp)
-    return {"message": ":white_check_mark: Successfully removed pin"}
-
-def _cmd_STT_draft(client, event_data, command, say):
-    if len(command.args) == 0:
-        raise CommandError("No list provided")
-    else:
-        draft_order = command.args
-        random.shuffle(draft_order)
-    ex = ' '    
-    return {"message": f":robot_face: Order generated: {ex.join(draft_order)}"}  
-   
 def _ret_error(error, say):
     say(f":warning: {error}")
     env.log.warning(error)
@@ -329,6 +329,9 @@ def _ret_success_blocks(blocks, suc_message, say):
     say(blocks=blocks)
     env.log.info(suc_message)
     return {"message": suc_message}, 200
+
+
+# - Command map - #
 
 
 commands = [
@@ -397,20 +400,13 @@ commands = [
         "func": _cmd_pin_leaderboard
     },
     {
-        "cmd": "poll",
-        "sub_cmd": "react",
-        "args": [],
-        "help": "Adds reactions for pin showdown",
-        "func": _cmd_poll_react
-    },
-    {
         "cmd": "STT",
         "sub_cmd": "Draft",
         "args": [
             "list_of_users"
         ],
         "help": "Randomises order of users for STT Draft",
-        "func": _cmd_STT_draft
+        "func": _cmd_stt_draft
     },
     
 ]
