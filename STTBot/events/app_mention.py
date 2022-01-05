@@ -23,7 +23,7 @@ def _handle_user_mention(client, event_data, say):
     channel = event_data["event"].get("channel")
     command = Command.from_text(text)
     cmd = command.cmd
-    sub_cmd = command.get_sub_cmd()
+    sub_cmd = command.sub_cmd
     env.log.info(f"Received command `{command.raw_cmd}` in {channel}")
 
     matching_cmd = [command for command in commands if command['cmd'] == cmd and command['sub_cmd'] == sub_cmd]
@@ -51,7 +51,7 @@ def _handle_user_mention(client, event_data, say):
 def _cmd_help(client, event_data, command, say):
     cmds = "\n".join([
         f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
-        for cmd in commands])
+        for cmd in sorted(commands, key=lambda k: (k['cmd'], k['sub_cmd'] if k['sub_cmd'] is not None else '_'))])
     message = f"Here is everything I can do:\n{cmds}"
     return {"message": message}
 
@@ -196,7 +196,27 @@ def _cmd_stt_draft(client, event_data, command, say):
         draft_order = command.args
         random.shuffle(draft_order)
     ex = ' '    
-    return {"message": f":robot_face: Order generated: {ex.join(draft_order)}"}  
+    return {"message": f":robot_face: Order generated: {ex.join(draft_order)}"}
+
+
+def _cmd_msg_leaderboard(client, event_data, command, say):
+    if len(command.args) == 0:
+        raise CommandError("Need a word to search")
+    else:
+        if command.args[0] == "raw":
+            search_string = " ".join(command.args[1:])
+            display_search_string = search_string
+        else:
+            search_string = f"\\b{' '.join(command.args)}\\b"
+            display_search_string = search_string[2:-2]
+
+        leaderboard = data_interface.get_msg_leaderboard(search_string)
+        if leaderboard is None:
+            raise CommandError("No matches found")
+
+        leader_str = '\n'.join([f'{k:14} {v}' for k, v in leaderboard.items()])
+        message = f"""```user_name      Count of {display_search_string}\n{leader_str}```"""
+        return {"message": message}
 
 
 # - Helpers - #
@@ -400,15 +420,24 @@ commands = [
         "func": _cmd_pin_leaderboard
     },
     {
-        "cmd": "STT",
-        "sub_cmd": "Draft",
+        "cmd": "draft",
+        "sub_cmd": None,
         "args": [
             "list_of_users"
         ],
         "help": "Randomises order of users for STT Draft",
         "func": _cmd_stt_draft
     },
-    
+    {
+        "cmd": "msg",
+        "sub_cmd": "leaderboard",
+        "args": [
+            "raw",
+            "search_string"
+        ],
+        "help": "Returns the people who used the given search string the most",
+        "func": _cmd_msg_leaderboard
+    }
 ]
 
 

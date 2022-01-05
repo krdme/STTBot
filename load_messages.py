@@ -2,20 +2,22 @@
 import sqlite3
 import os
 import json
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # Internal
 from STTBot.utils import env
 
 # Global variables
 db = env.get_cfg("PATH_DB")
-insert_batch_size = 10000
 data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 required_fields = ["ts", "user", "text"]
 insert_sql = "INSERT or IGNORE INTO messages (timestamp, channel_id, channel_name, user_id, user_name, message, permalink) VALUES (:timestamp, :channel_id, :channel_name, :user_id, :user_name, :message, :permalink)"
 permalink_base_url = "https://sweaty-tikitaka.slack.com/archives"
+inserted_message_counts = {}
 
 # Global accessors
 con = sqlite3.connect(db, isolation_level=None)
+scheduler = BackgroundScheduler()
 
 
 def main():
@@ -27,24 +29,15 @@ def main():
         channel_id = [channel['id'] for channel in channel_info if channel['name'] == channel_name][0]
         env.log.info(f"Getting messages for {channel_name}")
 
-        message_data = []
         for message_file in os.scandir(channel_dir):
-            message_data.extend(process_message_file(message_file, channel_id))
+            message_data = process_message_file(message_file, channel_id)
+            for message in message_data:
+                message['channel_id'] = channel_id
+                message['channel_name'] = channel_name
+            con.executemany(insert_sql, message_data)
+            inserted_message_counts[channel_name] = inserted_message_counts.get(channel_name, 0) + len(message_data)
 
-        for message in message_data:
-            message['channel_id'] = channel_id
-            message['channel_name'] = channel_name
-
-        env.log.info(f"Found {len(message_data)} messages for {channel_name}")
-        insert_messages(message_data)
-        env.log.info(f"Inserted/updated {len(message_data)} messages for {channel_name}")
-
-
-def insert_messages(message_data):
-    message_data = [message_data[i * insert_batch_size:(i + 1) * insert_batch_size] for i in range((len(message_data) + insert_batch_size - 1) // insert_batch_size)]
-    for (i, batch) in enumerate(message_data):
-        env.log.info(f"Inserting batch {i + 1} of {len(message_data)} to the database")
-        con.executemany(insert_sql, batch)
+        env.log.info(f"Inserted/updated {inserted_message_counts[channel_name]} messages for {channel_name}")
 
 
 def process_message_file(filepath, channel_id):
@@ -81,6 +74,13 @@ def get_json_from_file(filepath):
         return json.load(f)
 
 
+def log_inserted_counts():
+    env.log.info(f"Current message counts: {', '.join([f'{k}:{v}' for k,v in inserted_message_counts.items()])}")
+
+
 if __name__ == "__main__":
+    scheduler.add_job(log_inserted_counts, trigger='interval', minutes=1)
+    scheduler.start()
     main()
     con.close()
+    scheduler.shutdown()

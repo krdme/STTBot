@@ -24,6 +24,7 @@ def start():
     http_server = WSGIServer((server_host, server_port), flask_app, log=env.log)
 
     try:
+        env.log.info("Started up")
         http_server.serve_forever()
     except KeyboardInterrupt:
         env.log.info("Shutting down")
