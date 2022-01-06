@@ -109,8 +109,9 @@ def get_msg_match(search):
     else:
         pattern = re.compile(search)
         for row in rows:
-            key = pattern.search(row[0]).group()
-            leaderboard[key] += 1
+            matches = pattern.findall(row[0])
+            for match in matches:
+                leaderboard[match] += 1
 
     return_dict = {}
     num_to_display = 10
