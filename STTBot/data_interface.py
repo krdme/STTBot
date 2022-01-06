@@ -2,6 +2,7 @@
 import re
 import sqlite3
 import json
+from collections import defaultdict
 
 # Internal
 from STTBot.utils import env
@@ -96,6 +97,32 @@ def get_msg_leaderboard(search):
     return leaderboard
 
 
+def get_msg_match(search):
+    cur = get_cur()
+    cur.execute(Query.MSG_MATCH, [search])
+    rows = cur.fetchall()
+    cur.close()
+
+    leaderboard = defaultdict(int)
+    if len(rows) == 0:
+        return None
+    else:
+        pattern = re.compile(search)
+        for row in rows:
+            key = pattern.search(row[0]).group()
+            leaderboard[key] += 1
+
+    return_dict = {}
+    num_to_display = 10
+    for k, v in sorted(leaderboard.items(), key=lambda x: x[1], reverse=True):
+        return_dict[k] = v
+        num_to_display -= 1
+        if num_to_display <= 0:
+            break
+
+    return return_dict
+
+
 # - Constants - #
 
 
@@ -112,4 +139,5 @@ class Query:
     GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? ORDER BY RANDOM() LIMIT 1"
     INSERT_PIN = f"INSERT INTO {Table.PINS} (created_by, channel, timestamp, json, permalink) VALUES (?, ?, ?, ?, ?)"
     MSG_LEADERBOARD = f"SELECT user_name, count(*) AS count FROM {Table.MESSAGES} WHERE lower(message) REGEXP ? AND user_name != 'Unknown' GROUP BY user_name order BY count DESC"
+    MSG_MATCH = f"SELECT message FROM {Table.MESSAGES} WHERE lower(message) REGEXP ?"
     REMOVE_PIN = f"DELETE FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
