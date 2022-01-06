@@ -140,5 +140,5 @@ class Query:
     GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? ORDER BY RANDOM() LIMIT 1"
     INSERT_PIN = f"INSERT INTO {Table.PINS} (created_by, channel, timestamp, json, permalink) VALUES (?, ?, ?, ?, ?)"
     MSG_LEADERBOARD = f"SELECT user_name, count(*) AS count FROM {Table.MESSAGES} WHERE lower(message) REGEXP ? AND user_name != 'Unknown' GROUP BY user_name order BY count DESC"
-    MSG_MATCH = f"SELECT message FROM {Table.MESSAGES} WHERE lower(message) REGEXP ?"
+    MSG_MATCH = f"SELECT lower(message) FROM {Table.MESSAGES} WHERE lower(message) REGEXP ?"
     REMOVE_PIN = f"DELETE FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
