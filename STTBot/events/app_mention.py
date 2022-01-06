@@ -212,10 +212,28 @@ def _cmd_msg_leaderboard(client, event_data, command, say):
 
         leaderboard = data_interface.get_msg_leaderboard(search_string)
         if leaderboard is None:
-            raise CommandError("No matches found")
+            raise CommandError(f"No matches found for {display_search_string}")
 
-        leader_str = '\n'.join([f'{k:14} {v}' for k, v in leaderboard.items()])
-        message = f"""```user_name      Count of {display_search_string}\n{leader_str}```"""
+        longest_string = max(len(k) for k in leaderboard.keys()) + 2
+        leader_str = '\n'.join([f'{k.ljust(longest_string)} {v}' for k, v in leaderboard.items()])
+        message = f"""```{"User".ljust(longest_string)} Count of {display_search_string}\n{leader_str}```"""
+        return {"message": message}
+
+
+def _cmd_msg_match(client, event_data, command, say):
+    if len(command.args) == 0:
+        raise CommandError("Need a pattern to search")
+    else:
+        search_string = " ".join(command.args[0:])
+        display_search_string = search_string
+
+        leaderboard = data_interface.get_msg_match(search_string)
+        if leaderboard is None:
+            raise CommandError(f"No matches found for {display_search_string}")
+
+        longest_string = max(len(k) for k in leaderboard.keys()) + 2
+        leader_str = '\n'.join([f'{k.ljust(longest_string)} {v}' for k, v in leaderboard.items()])
+        message = f"""```{"Match".ljust(longest_string)} Count of {display_search_string}\n{leader_str}```"""
         return {"message": message}
 
 
@@ -437,6 +455,15 @@ commands = [
         ],
         "help": "Returns the people who used the given search string the most",
         "func": _cmd_msg_leaderboard
+    },
+    {
+        "cmd": "msg",
+        "sub_cmd": "match",
+        "args": [
+            "regex_pattern"
+        ],
+        "help": "Returns the most frequent matches of a given RegEx pattern",
+        "func": _cmd_msg_match
     }
 ]
 
