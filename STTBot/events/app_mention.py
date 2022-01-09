@@ -218,7 +218,7 @@ def _cmd_msg_leaderboard(client, event_data, command, say):
             leaderboard[k] = leaderboard[k].replace("@", "#")
 
         longest_string = max(len(k) for k in leaderboard.keys()) + 2
-        leader_str = '\n'.join([f'{k.ljust(longest_string)} {v}' for k, v in leaderboard.items()])
+        leader_str = '\n'.join([f'{k.replace("@", "#").ljust(longest_string)} {v}' for k, v in leaderboard.items()])
         message = f"""```{"User".ljust(longest_string)} Count of {display_search_string}\n{leader_str}```"""
         return {"message": message}
 
