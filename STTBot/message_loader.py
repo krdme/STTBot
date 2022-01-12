@@ -1,7 +1,6 @@
 # External
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 # Internal
@@ -10,6 +9,7 @@ from STTBot.utils import env
 
 
 required_fields = ["ts", "user", "text"]
+scheduler = BackgroundScheduler()
 
 
 def get_messages(client, start_time: datetime, end_time):
@@ -40,7 +40,7 @@ def get_messages(client, start_time: datetime, end_time):
             message_count += len(messages)
 
         env.log.info(f"Processed {message_count} messages for {channel_name}")
-    env.log.info("Refresh complete")
+    env.log.info(f"Refresh complete. Next scheduled refresh is at {scheduler.get_job('refresh_messages').next_run_time.isoformat()}")
 
 
 def process_message_response(message_response, channel_id, channel_name, users):
@@ -71,14 +71,13 @@ def resolve_missing_keys(message):
 
 
 def schedule_refresh(client):
-    scheduler = BackgroundScheduler()
     midnight = (datetime.now() + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     scheduler.add_job(
         func=get_messages,
         args=(client, midnight - timedelta(days=2), midnight - timedelta(days=1)),
         trigger='interval',
         days=1,
-        next_run_time=datetime.now(),
+        next_run_time=midnight,
         id='refresh_messages'
     )
     scheduler.start()
