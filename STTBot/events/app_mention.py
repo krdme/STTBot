@@ -2,16 +2,16 @@
 import json
 import traceback
 import random
-
-# Internal
-from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
+# Internal
 import STTBot.data_interface as data_interface
 from STTBot.models.command import Command
 from STTBot.models.permalink import Permalink
 from STTBot.utils import env
 
+
+# - Top-level handlers - #
 
 def handle(client, event_data, say):
     if event_data["event"].get("subtype") != "bot_message":
@@ -48,16 +48,7 @@ def _handle_user_mention(client, event_data, say):
         return _ret_error(e, say)
 
 
-def _cmd_help(client, event_data, command, say):
-    cmds = "\n".join([
-        f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
-        for cmd in sorted(commands, key=lambda k: (k['cmd'], k['sub_cmd'] if k['sub_cmd'] is not None else '_'))])
-    message = f"Here is everything I can do:\n{cmds}"
-    return {"message": message}
-
-
 # - Pin commands - #
-
 
 def _cmd_pin(client, event_data, command, say):
     channel = event_data["event"].get("channel")
@@ -87,7 +78,7 @@ def _cmd_pin_channel(client, event_data, command, say):
 
     if message is None:
         channels = client.conversations_list()["channels"]
-        matching_channel = [channel for channel in channels if channel["id"] == channel_id]
+        matching_channel = [channel for channel in channels if channel["id"].lower() == channel_id.lower()]
         if len(matching_channel) == 0:
             raise CommandError(f"Channel `{command.args[0]}` not found")
         else:
@@ -143,14 +134,13 @@ def _cmd_pin_remove(client, event_data, command, say):
 def _cmd_pin_load(client, event_data, command, say):
     msg_channel = event_data["event"].get("channel")
     pins = client.pins_list(channel=msg_channel)
-    env.log.info(pins)
     added_count = 0
     ignored_count = 0
 
     for pin in pins['items']:
         raw_permalink = pin[pin['type']]['permalink']
         message_json = json.dumps(pin[pin['type']])
-        env.log.info(f"pin add {raw_permalink}")
+        env.log.info(f"Adding pin for {raw_permalink}")
 
         if pin['type'] == "message":
             permalink = Permalink.from_text(raw_permalink)
@@ -169,7 +159,7 @@ def _cmd_pin_load(client, event_data, command, say):
     return {"message": f":white_check_mark: Successfully loaded {added_count} pins and ignored {ignored_count} pins"}
 
 
-def _cmd_pin_leaderboard(client: WebClient, event_data, command, say):
+def _cmd_pin_leaderboard(client, event_data, command, say):
     users = client.users_list()
     if len(command.args) == 1 and command.args[0] == "all":
         pins = data_interface.get_all_pins()
@@ -186,18 +176,7 @@ def _cmd_pin_leaderboard(client: WebClient, event_data, command, say):
     return {"blocks": blocks}
 
 
-# - Other commands - #
-
-
-def _cmd_stt_draft(client, event_data, command, say):
-    if len(command.args) == 0:
-        raise CommandError("No list provided")
-    else:
-        draft_order = command.args
-        random.shuffle(draft_order)
-    ex = ' '    
-    return {"message": f":robot_face: Order generated: {ex.join(draft_order)}"}
-
+# - Message commands - #
 
 def _cmd_msg_leaderboard(client, event_data, command, say):
     if len(command.args) == 0:
@@ -206,11 +185,13 @@ def _cmd_msg_leaderboard(client, event_data, command, say):
         if command.args[0] == "raw":
             search_string = " ".join(command.args[1:])
             display_search_string = search_string
+            ignore_case = False
         else:
-            search_string = f"\\b{' '.join(command.args).lower()}\\b"
+            search_string = f"\\b{' '.join(command.args)}\\b"
             display_search_string = search_string[2:-2]
+            ignore_case = True
 
-        leaderboard = data_interface.get_msg_leaderboard(search_string)
+        leaderboard = data_interface.get_msg_leaderboard(search_string, ignore_case=ignore_case)
         if leaderboard is None:
             raise CommandError(f"No matches found for {display_search_string}")
 
@@ -224,21 +205,44 @@ def _cmd_msg_match(client, event_data, command, say):
     if len(command.args) == 0:
         raise CommandError("Need a pattern to search")
     else:
-        search_string = " ".join(command.args[0:])
-        display_search_string = search_string
+        if command.args[0] == "raw":
+            search_string = " ".join(command.args[1:])
+            ignore_case = False
+        else:
+            search_string = " ".join(command.args)
+            ignore_case = True
 
-        leaderboard = data_interface.get_msg_match(search_string)
+        leaderboard = data_interface.get_msg_match(search_string, ignore_case=ignore_case)
         if leaderboard is None:
-            raise CommandError(f"No matches found for {display_search_string}")
+            raise CommandError(f"No matches found for {search_string}")
 
         longest_string = max(len(k) for k in leaderboard.keys()) + 2
         leader_str = '\n'.join([f'{k.ljust(longest_string)} {v}' for k, v in leaderboard.items()])
-        message = f"""```{"Match".ljust(longest_string)} Count of {display_search_string}\n{leader_str}```"""
+        message = f"""```{"Match".ljust(longest_string)} Count of {search_string}\n{leader_str}```"""
         return {"message": message}
 
 
-# - Helpers - #
+# - Other commands - #
 
+def _cmd_help(client, event_data, command, say):
+    cmds = "\n".join([
+        f"`{cmd['cmd']}{' ' + cmd['sub_cmd'] if cmd['sub_cmd'] is not None else ''}{''.join([' <' + arg + '>' for arg in cmd['args']])}` - {cmd['help']}"
+        for cmd in sorted(commands, key=lambda k: (k['cmd'], k['sub_cmd'] if k['sub_cmd'] is not None else '_'))])
+    message = f"Here is everything I can do:\n{cmds}"
+    return {"message": message}
+
+
+def _cmd_stt_draft(client, event_data, command, say):
+    if len(command.args) == 0:
+        raise CommandError("No list provided")
+    else:
+        draft_order = command.args
+        random.shuffle(draft_order)
+    ex = ' '    
+    return {"message": f":robot_face: Order generated: {ex.join(draft_order)}"}
+
+
+# - Helper methods - #
 
 def _get_top_users(users, pins):
     """Returns dict with the necessary data to create a top users leaderboard.
@@ -369,8 +373,11 @@ def _ret_success_blocks(blocks, suc_message, say):
     return {"message": suc_message}, 200
 
 
-# - Command map - #
+class CommandError(Exception):
+    pass
 
+
+# - Command map - #
 
 commands = [
     {
@@ -466,8 +473,3 @@ commands = [
         "func": _cmd_msg_match
     }
 ]
-
-
-class CommandError(Exception):
-    """Used to represent any error received from API-Football."""
-    pass

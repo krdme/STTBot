@@ -7,6 +7,7 @@ from slack_bolt.adapter.flask import SlackRequestHandler
 
 # Internal
 from STTBot.events import app_mention
+from STTBot.message_loader import schedule_refresh
 from STTBot.utils import env
 
 
@@ -21,6 +22,8 @@ handler = SlackRequestHandler(bolt_app)
 def start():
     server_host = env.get_cfg("SERVER_HOST")
     server_port = env.get_cfg("SERVER_PORT")
+    set_bot_token()
+    scheduler = schedule_refresh(bolt_app.client)
     http_server = WSGIServer((server_host, server_port), flask_app, log=env.log)
 
     try:
@@ -29,7 +32,16 @@ def start():
     except KeyboardInterrupt:
         env.log.info("Shutting down")
         http_server.close()
+        scheduler.shutdown()
         env.log.info("Shut down")
+
+
+def set_bot_token():
+    installation = bolt_app.installation_store.find_installation(team_id=env.get_cfg("AUTH_TEAM_ID"), enterprise_id=None)
+    if installation is None:
+        env.log.error("Can't find matching installation, either AUTH_TEAM_ID is not set or the bot isn't installed")
+    else:
+        bolt_app.client.token = installation.bot_token
 
 
 # - Slack routes - #

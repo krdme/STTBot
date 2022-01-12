@@ -11,11 +11,20 @@ from STTBot.utils import env
 db = env.get_cfg("PATH_DB")
 
 
-def get_cur():
+# - Generic methods - #
+
+def get_cur(ignore_case=True):
     con = sqlite3.connect(db, isolation_level=None)
-    con.set_trace_callback(env.log.info)
-    con.create_function("REGEXP", 2, regexp)
+    if ignore_case:
+        con.create_function("REGEXP", 2, regexp_ignore_case)
+    else:
+        con.create_function("REGEXP", 2, regexp)
     return con.cursor()
+
+
+def regexp_ignore_case(expr, item):
+    reg = re.compile(expr, re.IGNORECASE)
+    return reg.search(item) is not None
 
 
 def regexp(expr, item):
@@ -79,10 +88,10 @@ def remove_pin(channel, timestamp):
     cur.close()
 
 
-# - Other - #
+# - Message queries - #
 
-def get_msg_leaderboard(search):
-    cur = get_cur()
+def get_msg_leaderboard(search, ignore_case=True):
+    cur = get_cur(ignore_case=ignore_case)
     cur.execute(Query.MSG_LEADERBOARD, [search])
     rows = cur.fetchall()
     cur.close()
@@ -97,8 +106,8 @@ def get_msg_leaderboard(search):
     return leaderboard
 
 
-def get_msg_match(search):
-    cur = get_cur()
+def get_msg_match(search, ignore_case=True):
+    cur = get_cur(ignore_case=ignore_case)
     cur.execute(Query.MSG_MATCH, [search])
     rows = cur.fetchall()
     cur.close()
@@ -107,11 +116,14 @@ def get_msg_match(search):
     if len(rows) == 0:
         return None
     else:
-        pattern = re.compile(search)
+        if ignore_case:
+            pattern = re.compile(search, re.IGNORECASE)
+        else:
+            pattern = re.compile(search)
         for row in rows:
             matches = pattern.findall(row[0])
             for match in matches:
-                leaderboard[match] += 1
+                leaderboard[match.lower()] += 1
 
     return_dict = {}
     num_to_display = 10
@@ -124,8 +136,13 @@ def get_msg_match(search):
     return return_dict
 
 
-# - Constants - #
+def insert_messages(message_data):
+    cur = get_cur()
+    cur.executemany(Query.INSERT_MESSAGE, message_data)
+    cur.close()
 
+
+# - Constants - #
 
 class Table:
     PINS = "pins"
@@ -134,11 +151,12 @@ class Table:
 
 class Query:
     GET_ALL_PINS = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} ORDER BY created_at"
-    GET_ALL_PINS_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? ORDER BY created_at"
-    GET_PIN = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
+    GET_ALL_PINS_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel COLLATE NOCASE = ? ORDER BY created_at"
+    GET_PIN = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel COLLATE NOCASE = ? AND timestamp = ? "
     GET_RANDOM_PIN = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} ORDER BY RANDOM() LIMIT 1"
-    GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel = ? ORDER BY RANDOM() LIMIT 1"
-    INSERT_PIN = f"INSERT INTO {Table.PINS} (created_by, channel, timestamp, json, permalink) VALUES (?, ?, ?, ?, ?)"
-    MSG_LEADERBOARD = f"SELECT user_name, count(*) AS count FROM {Table.MESSAGES} WHERE lower(message) REGEXP ? AND user_name != 'Unknown' GROUP BY user_name order BY count DESC"
-    MSG_MATCH = f"SELECT lower(message) FROM {Table.MESSAGES} WHERE lower(message) REGEXP ?"
-    REMOVE_PIN = f"DELETE FROM {Table.PINS} WHERE channel = ? AND timestamp = ?"
+    GET_RANDOM_PIN_FROM_CHANNEL = f"SELECT channel, timestamp, json, permalink FROM {Table.PINS} WHERE channel COLLATE NOCASE = ? ORDER BY RANDOM() LIMIT 1"
+    INSERT_MESSAGE = f"INSERT or IGNORE INTO {Table.MESSAGES} (timestamp, channel_id, channel_name, user_id, user_name, message, permalink) VALUES (:timestamp, :channel_id, :channel_name, :user_id, :user_name, :message, :permalink)"
+    INSERT_PIN = f"INSERT or IGNORE INTO {Table.PINS} (created_by, channel, timestamp, json, permalink) VALUES (?, ?, ?, ?, ?)"
+    MSG_LEADERBOARD = f"SELECT user_name, count(*) AS count FROM {Table.MESSAGES} WHERE message REGEXP ? AND user_name != 'Unknown' GROUP BY user_name ORDER BY count DESC"
+    MSG_MATCH = f"SELECT message FROM {Table.MESSAGES} WHERE message REGEXP ?"
+    REMOVE_PIN = f"DELETE FROM {Table.PINS} WHERE channel COLLATE NOCASE = ? AND timestamp = ?"
