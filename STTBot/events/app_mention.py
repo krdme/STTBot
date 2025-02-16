@@ -62,23 +62,31 @@ def _cmd_pin(client, event_data, command, say):
     json_msg = message[2]
     user = [user for user in users['members'] if user['id'] == json_msg['user']][0]['name']
     timestamp = datetime.datetime.fromtimestamp(float(json_msg['ts']))
-    print(json_msg['text'])
+    env.log.info(json_msg['text'])
     ret_message = f"*{user}* ({timestamp.strftime('%Y-%m-%d %H:%M:%S')})\n\n{json_msg['text']}"
 
     return {"message": ret_message}
 
 
 def _cmd_pin_any(client, event_data, command, say):
+    users = client.users_list()
     message = data_interface.get_random_pin()
 
     if message is None:
         raise CommandError("No pins found")
 
-    permalink_msg = message[3]
-    return {"message": permalink_msg}
+    json_msg = message[2]
+    user = [user for user in users['members'] if user['id'] == json_msg['user']][0]['name']
+    timestamp = datetime.datetime.fromtimestamp(float(json_msg['ts']))
+    env.log.info(json_msg['text'])
+    ret_message = f"*{user}* ({timestamp.strftime('%Y-%m-%d %H:%M:%S')})\n\n{json_msg['text']}"
+
+    return {"message": ret_message}
 
 
 def _cmd_pin_channel(client, event_data, command, say):
+    users = client.users_list()
+
     # Get channel-id from argument in '<#channel-id|channel-name>' format.
     channel_id = command.args[0].split('|')[0][2:]
     message = data_interface.get_random_pin(channel=channel_id)
@@ -91,8 +99,13 @@ def _cmd_pin_channel(client, event_data, command, say):
         else:
             raise CommandError("No pins found")
 
-    permalink_msg = message[3]
-    return {"message": permalink_msg}
+    json_msg = message[2]
+    user = [user for user in users['members'] if user['id'] == json_msg['user']][0]['name']
+    timestamp = datetime.datetime.fromtimestamp(float(json_msg['ts']))
+    env.log.info(json_msg['text'])
+    ret_message = f"*{user}* ({timestamp.strftime('%Y-%m-%d %H:%M:%S')})\n\n{json_msg['text']}"
+
+    return {"message": ret_message}
 
 
 def _cmd_pin_add(client, event_data, command, say):
