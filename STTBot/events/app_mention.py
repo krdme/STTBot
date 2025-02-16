@@ -60,9 +60,10 @@ def _cmd_pin(client, event_data, command, say):
         raise CommandError("No pins found")
     
     json_msg = message[2]
-    user = [user for user in users['members'] if user['id'] == json_msg['user']][0]
+    user = [user for user in users['members'] if user['id'] == json_msg['user']][0]['name']
     timestamp = datetime.datetime.fromtimestamp(float(json_msg['ts']))
-    ret_message = f"{user} | {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n{json_msg['text']}"
+    print(json_msg['text'])
+    ret_message = f"*{user}* ({timestamp.strftime('%Y-%m-%d %H:%M:%S')})\n\n{json_msg['text']}"
 
     return {"message": ret_message}
 
