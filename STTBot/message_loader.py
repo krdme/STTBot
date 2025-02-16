@@ -12,7 +12,10 @@ required_fields = ["ts", "user", "text"]
 scheduler = BackgroundScheduler()
 
 
-def get_messages(client, start_time: datetime, end_time):
+def get_messages(client):
+    midnight = (datetime.now() + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_time = midnight - timedelta(days=2)
+    end_time = midnight - timedelta(days=1)
     env.log.info(f"Refreshing messages between {start_time} and {end_time}")
     channel_response = client.conversations_list(types='public_channel,private_channel')
     channels = {channel['id']: channel['name'] for channel in channel_response['channels']}
@@ -22,6 +25,7 @@ def get_messages(client, start_time: datetime, end_time):
     for channel_id, channel_name in channels.items():
         oldest = f"{start_time.timestamp()}00000"
         latest = f"{end_time.timestamp()}00000"
+        env.log.info(f"Start {oldest}, end {latest}")
         message_count = 0
         cursor = None
         has_more = True
@@ -74,7 +78,7 @@ def schedule_refresh(client):
     midnight = (datetime.now() + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     scheduler.add_job(
         func=get_messages,
-        args=(client, midnight - timedelta(days=2), midnight - timedelta(days=1)),
+        args=[client],
         trigger='interval',
         days=1,
         next_run_time=midnight,

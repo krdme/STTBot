@@ -9,7 +9,7 @@ from STTBot.utils import env
 
 # Global variables
 db = env.get_cfg("PATH_DB")
-data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data")
 required_fields = ["ts", "user", "text"]
 inserted_message_counts = {}
 
@@ -67,7 +67,7 @@ def resolve_missing_keys(message):
 
 
 def get_json_from_file(filepath):
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf8') as f:
         return json.load(f)
 
 

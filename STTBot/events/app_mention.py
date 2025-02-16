@@ -1,6 +1,7 @@
 # External
 import json
 import traceback
+import datetime
 import random
 from slack_sdk.errors import SlackApiError
 
@@ -51,14 +52,19 @@ def _handle_user_mention(client, event_data, say):
 # - Pin commands - #
 
 def _cmd_pin(client, event_data, command, say):
+    users = client.users_list()
     channel = event_data["event"].get("channel")
     message = data_interface.get_random_pin(channel=channel)
 
     if message is None:
         raise CommandError("No pins found")
+    
+    json_msg = message[2]
+    user = [user for user in users['members'] if user['id'] == json_msg['user']][0]
+    timestamp = datetime.datetime.fromtimestamp(float(json_msg['ts']))
+    ret_message = f"{user} | {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n{json_msg['text']}"
 
-    permalink_msg = message[3]
-    return {"message": permalink_msg}
+    return {"message": ret_message}
 
 
 def _cmd_pin_any(client, event_data, command, say):
